@@ -374,6 +374,10 @@ Continue with practical implementation of:
 - [ ] Implement billing and payment processing
 - [ ] Add monitoring and analytics dashboard
 
+## Git Configuration
+
+See [git.md](./git.md) for detailed git configuration, remote setup, and branch management commands.
+
 ## Contact & Support
 
 - Primary Developer: Shashwot Bhattarai (Yatri Motorcycles)
