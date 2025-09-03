@@ -649,6 +649,7 @@ RFID_TOKEN="F1E2D3C4"  # From tap logs
 
 **✅ Ready for Production Use Cases:**
 
+
 - Walk-up customer charging with RFID cards
 - Fleet vehicle management via API
 - Real-time transaction monitoring

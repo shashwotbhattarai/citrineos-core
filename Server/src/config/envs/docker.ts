@@ -181,7 +181,7 @@ export function createDockerConfig() {
           {
             id: '0',
             securityProfile: 0,
-            allowUnknownChargingStations: true,
+            allowUnknownChargingStations: false,
             pingInterval: 60,
             host: '0.0.0.0',
             port: 8081,
@@ -208,15 +208,15 @@ export function createDockerConfig() {
             protocol: 'ocpp2.0.1',
             tlsKeyFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/leafKey.pem',
+              '../assets/certificates/leafKey.pem',
             ),
             tlsCertificateChainFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/certChain.pem',
+              '../assets/certificates/certChain.pem',
             ),
             rootCACertificateFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/rootCertificate.pem',
+              '../assets/certificates/rootCertificate.pem',
             ),
             tenantId: DEFAULT_TENANT_ID,
           },
@@ -230,26 +230,26 @@ export function createDockerConfig() {
             protocol: 'ocpp2.0.1',
             tlsKeyFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/leafKey.pem',
+              '../assets/certificates/leafKey.pem',
             ),
             tlsCertificateChainFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/certChain.pem',
+              '../assets/certificates/certChain.pem',
             ),
             mtlsCertificateAuthorityKeyFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/subCAKey.pem',
+              '../assets/certificates/subCAKey.pem',
             ),
             rootCACertificateFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/rootCertificate.pem',
+              '../assets/certificates/rootCertificate.pem',
             ),
             tenantId: DEFAULT_TENANT_ID,
           },
           {
             id: '4',
             securityProfile: 0,
-            allowUnknownChargingStations: true,
+            allowUnknownChargingStations: false,
             pingInterval: 60,
             host: '0.0.0.0',
             port: 8092,
@@ -274,7 +274,7 @@ export function createDockerConfig() {
             env: 'staging',
             accountKeyFilePath: path.resolve(
               path.dirname(__filename),
-              '../../assets/certificates/acme_account_key.pem',
+              '../assets/certificates/acme_account_key.pem',
             ),
             email: 'test@citrineos.com',
           },
