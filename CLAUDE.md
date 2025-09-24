@@ -77,6 +77,57 @@ docker logs server-amqp-broker-1
 3. Use `docker logs` to monitor application output
 4. Access APIs via Swagger UI for testing
 
+## API Documentation Access
+
+### Swagger UI & API Exploration
+
+- **Swagger UI**: http://localhost:8080/docs (visual interface)
+- **Swagger JSON**: http://localhost:8080/docs/json (programmatic access)
+
+### Programmatic API Documentation Commands
+
+```bash
+# Get all API endpoints
+curl -s http://localhost:8080/docs/json | jq '.paths | keys[]'
+
+# Find specific endpoints (e.g., OCPP 1.6 remote operations)
+curl -s http://localhost:8080/docs/json | jq '.paths | keys[]' | grep -i remote
+
+# Get detailed endpoint schema
+curl -s http://localhost:8080/docs/json | jq '.paths."/ocpp/1.6/evdriver/remoteStartTransaction".post'
+
+# Get request body schema
+curl -s http://localhost:8080/docs/json | jq '.components.schemas.RemoteStartTransactionRequest'
+
+# Get all OCPP 1.6 endpoints
+curl -s http://localhost:8080/docs/json | jq '.paths | keys[]' | grep "1.6"
+
+# Get all OCPP 2.0.1 endpoints  
+curl -s http://localhost:8080/docs/json | jq '.paths | keys[]' | grep "2.0.1"
+```
+
+### API Endpoint Patterns
+
+**OCPP 1.6 Format:**
+```
+POST /ocpp/1.6/evdriver/remoteStartTransaction?identifier=STATION_ID&tenantId=1
+Content-Type: application/json
+{
+  "connectorId": 1,
+  "idTag": "RFID_TOKEN"
+}
+```
+
+**OCPP 2.0.1 Format:**
+```
+POST /ocpp/2.0.1/evdriver/requestStartTransaction?identifier=STATION_ID&tenantId=1
+Content-Type: application/json
+{
+  "evseId": 1, 
+  "idToken": {"idToken": "RFID_TOKEN", "type": "ISO14443"}
+}
+```
+
 ## 📚 Session Documentation & Context
 
 ### Technical Deep Dive Documentation
@@ -256,6 +307,34 @@ Connect one OCPP 2.0.1 and one OCPP 1.6 charger to the running CitrinOS server a
 
 **📋 Documentation**: Complete session documented in `REAL_HARDWARE_INTEGRATION_OCPP_2.0.1.md`
 
+### ✅ **OCPP 1.6 Hardware Integration Completed** (Latest Session - September 8, 2025)
+
+**🎯 Major Milestone**: Successfully integrated physical IoCharger AC station with OCPP 1.6 protocol!
+
+#### **OCPP 1.6 Integration Achievements:**
+
+- ✅ **Protocol Configuration**: IoCharger firmware switched from 2.0.1 to 1.6
+- ✅ **WebSocket Connection**: `ws://192.168.1.136:8092/yatri-legacy-16-001` (port 8092 for 1.6)
+- ✅ **OCPP 1.6 Communication**: BootNotification, Heartbeat (60s), StatusNotification
+- ✅ **RFID Authorization**: Physical card `12DD941C` working with "Accepted" status
+- ✅ **Remote Operations**: RemoteStartTransaction API endpoint functional
+- ✅ **Database Integration**: Same 3-table authorization model as OCPP 2.0.1
+- ✅ **API Documentation**: Complete Swagger JSON access methods documented
+
+**Critical Discovery**:
+
+- **Port Separation**: OCPP 1.6 uses port 8092, OCPP 2.0.1 uses port 8081
+- **Protocol Detection**: CitrineOS automatically detects and routes based on WebSocket port
+- **Dual Protocol Support**: Single CitrineOS instance supports both protocols simultaneously
+
+**Key Differences Identified:**
+```
+OCPP 1.6: RemoteStartTransaction (connectorId, idTag)
+OCPP 2.0.1: RequestStartTransaction (evseId, idToken object)
+```
+
+**📋 Documentation**: Session documented in `REAL_HARDWARE_INTEGRATION_OCPP_1.6.md`
+
 ### ✅ **Yatri CSMS Infrastructure Successfully Deployed**
 
 **Real Database Structure Discovered & Implemented:**
@@ -384,12 +463,61 @@ See [git.md](./git.md) for detailed git configuration, remote setup, and branch 
 - CitrinOS Documentation: https://citrineos.github.io
 - OCPP Specifications: https://www.openchargealliance.org
 
+## Latest Session Context (September 24, 2025)
+
+### 🔍 **OCPP Message Flow Analysis & Authorization Debugging**
+
+**Session Focus**: Deep analysis of OCPP 1.6 transaction logs revealing critical authorization failures
+
+**Key Findings**:
+- **Critical Issue**: Authorization database missing entries for common test tokens (e.g., idToken "1")
+- **Architecture Analysis**: Traced complete OCPP message flow from WebSocket → RabbitMQ → Module Processing
+- **Database Structure**: Confirmed 3-table authorization model (IdTokens → Authorizations → IdTokenInfos)
+- **Code Locations**: Identified exact authorization validation logic in TransactionService.ts:173-178
+
+**Technical Analysis Completed**:
+```
+TransactionService.ts:169-172 - OCPP 1.6 authorization query
+Authorization.ts:80-107 - Database query construction with joins
+WebsocketNetworkConnection.ts - Message routing and connection handling
+Configuration/module.ts - Heartbeat processing and debug logging
+```
+
+**Issues Documented**:
+1. **Authorization Failures**: `Found invalid authorizations [] for idToken: 1`
+2. **Empty StationId**: Causing "Charging station not found" errors
+3. **Concurrent Calls**: "OcppError Call already in progress" conflicts
+4. **Log Verbosity**: DEBUG level (logLevel: 2) causing excessive output
+
+### 📋 **New Documentation Created**
+
+**OCPP_TROUBLESHOOTING_GUIDE.md** - Comprehensive debugging guide including:
+- Root cause analysis for authorization failures
+- Database query logic explanation
+- Step-by-step solutions for common issues
+- Debugging commands and monitoring tools
+- OCPP 1.6 vs 2.0.1 authorization differences
+
+### 🎯 **Next Session Priorities**
+
+1. **Fix Authorization Database**: Create proper entries for test tokens
+2. **Resolve StationId Issues**: Investigate empty field sources
+3. **Implement Solutions**: Apply fixes and test transaction flow
+4. **Monitor Improvements**: Track authorization success rates
+
 ## Troubleshooting
 
+### System Issues
 - **Docker not starting**: Ensure Docker Desktop is running
 - **Port conflicts**: Check for services running on ports 8080, 5672, 5432, 9000-9001
 - **Build failures**: Verify Node.js v22.18.0+ is active (`nvm use 22.18.0`)
 - **TypeScript errors**: Check for Buffer/Blob type compatibility issues
+
+### OCPP Issues
+- **Authorization failures**: See `OCPP_TROUBLESHOOTING_GUIDE.md` for complete analysis
+- **Empty stationId**: Check charging station WebSocket URL configuration
+- **Concurrent calls**: Review charging station firmware settings
+- **High log verbosity**: Adjust logLevel in Server/data/config.json
 
 ---
 
