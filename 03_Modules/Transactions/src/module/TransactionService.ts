@@ -10,6 +10,8 @@ import {
   IReservationRepository,
   IOCPPMessageRepository,
 } from '@citrineos/data';
+import { YatriEnergyClient } from '@citrineos/util';
+import { SystemConfig } from '@citrineos/base';
 import {
   AuthorizationStatusType,
   IAuthorizationDto,
@@ -168,6 +170,7 @@ export class TransactionService {
   async authorizeOcpp16IdToken(
     context: IMessageContext,
     idToken: string,
+    systemConfig?: SystemConfig,
   ): Promise<OCPP1_6.StartTransactionResponse> {
     const response: OCPP1_6.StartTransactionResponse = {
       idTagInfo: {
@@ -219,6 +222,13 @@ export class TransactionService {
         return response;
       }
 
+      // Check wallet balance (Yatri Energy Integration)
+      const walletCheckPassed = await this._checkYatriWalletBalance(idToken, context, systemConfig);
+      if (!walletCheckPassed) {
+        response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.Blocked;
+        return response;
+      }
+
       // Check authorizers
       response.idTagInfo.status =
         OCPP1_6_Mapper.AuthorizationMapper.toStartTransactionResponseStatus(
@@ -245,6 +255,56 @@ export class TransactionService {
       this._logger.error(`Authorization for idToken ${idToken} failed.`, e);
       response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.Invalid;
       return response;
+    }
+  }
+
+  /**
+   * Check wallet balance using Yatri Energy backend
+   */
+  private async _checkYatriWalletBalance(
+    idToken: string,
+    context: IMessageContext,
+    systemConfig?: SystemConfig,
+  ): Promise<boolean> {
+    try {
+      // Get system configuration to check if Yatri Energy integration is enabled
+      if (!systemConfig?.yatriEnergy?.enabled) {
+        this._logger.debug('Yatri Energy wallet integration is disabled, skipping wallet check');
+        return true; // Skip wallet check if integration is disabled
+      }
+
+      // Create Yatri Energy client
+      const yatriClient = new YatriEnergyClient(
+        systemConfig.yatriEnergy.baseUrl,
+        systemConfig.yatriEnergy.timeout,
+        systemConfig.yatriEnergy.apiKey,
+        this._logger,
+      );
+
+      // Check minimum balance using the YatriEnergyClient method
+      const hasMinimumBalance = await yatriClient.checkMinimumBalance(
+        idToken,
+        systemConfig.yatriEnergy.minimumBalance,
+      );
+
+      if (!hasMinimumBalance) {
+        this._logger.warn(`Wallet balance check failed for idToken: ${idToken}`, {
+          minimumRequired: systemConfig.yatriEnergy.minimumBalance,
+          stationId: context.stationId,
+        });
+        return false;
+      }
+
+      this._logger.debug(`Wallet balance check passed for idToken: ${idToken}`, {
+        minimumRequired: systemConfig.yatriEnergy.minimumBalance,
+        stationId: context.stationId,
+      });
+
+      return true;
+    } catch (error) {
+      this._logger.error(`Yatri Energy wallet check failed for idToken: ${idToken}`, error);
+      // On error, allow the transaction to proceed (fail-safe behavior)
+      return true;
     }
   }
 

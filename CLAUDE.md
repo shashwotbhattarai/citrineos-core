@@ -18,9 +18,10 @@ This is the core OCPP 2.0.1 and 1.6 compliant Charging Station Management System
 
 **Ecosystem Integration:**
 
-- 🔗 **yatri-energy-dash-frontend**: Multi-CPO admin dashboard (Next.js)
-- 🔗 **yatri-energy-app**: Customer EMSP mobile application (React Native)
-- 🔗 **citrineos-payment**: Stripe payment processing service integration
+- 🔗 **Yatri Energy Backend**: Mid-layer business logic and wallet integration (Primary Interface)
+- 🔗 **yatri-energy-dash-frontend**: Multi-CPO admin dashboard (via Yatri Energy Backend)
+- 🔗 **yatri-energy-app**: Customer EMSP mobile application (via Yatri Energy Backend)
+- 🔗 **Wallet Service Integration**: Via Yatri Energy Backend (minimum balance + settlement)
 - 🔗 **Real-time Monitoring**: WebSocket subscriptions for live dashboard updates
 
 ## Current Setup Status
@@ -828,6 +829,146 @@ curl -X POST "http://13.204.177.82:8080/data/ocpprouter/subscription" \
 - Advanced monitoring with Prometheus/Grafana
 - Backup and disaster recovery automation
 - Load testing and performance optimization
+
+## 💳 **Wallet Integration Architecture (December 2025)**
+
+### **🏗️ Correct Integration Pattern**
+
+CitrineOS Core operates as a **black box CSMS** with Yatri Energy Backend as the **mid-layer business logic controller**:
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Operator UI   │    │  Mobile Apps    │    │  Other Clients  │
+│   (Dashboard)   │    │   (EMSP App)    │    │                 │
+└─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
+          │                      │                      │
+          └──────────────────────┼──────────────────────┘
+                                 │ REST/GraphQL
+                    ┌─────────────▼───────────────┐
+                    │   Yatri Energy Backend      │
+                    │     (Mid-Layer API)         │
+                    │  • Wallet Service           │
+                    │  • Business Logic           │
+                    │  • User Management          │
+                    │  • API Gateway              │
+                    │  • Authentication           │
+                    └─────────────┬───────────────┘
+                                 │ HTTP REST API Calls
+                    ┌─────────────▼───────────────┐
+                    │    CitrineOS Core           │
+                    │   (CSMS Black Box)          │
+                    │  • OCPP Protocol            │
+                    │  • Transaction Management   │
+                    │  • Authorization            │
+                    │  • Billing Calculation     │
+                    └─────────────┬───────────────┘
+                                 │ WebSocket/OCPP
+                    ┌─────────────▼───────────────┐
+                    │   Charging Stations         │
+                    │  • IoCharger Hardware       │
+                    │  • OCPP 1.6/2.0.1           │
+                    └─────────────────────────────┘
+```
+
+### **🎯 Wallet Integration Flow**
+
+#### **1. User Authorization (StartTransaction)**
+
+```typescript
+// CitrineOS Core → Yatri Energy Backend
+async authorizeOcpp16IdToken(context: IMessageContext, idToken: string) {
+  // Call Yatri Energy to validate wallet balance
+  const response = await fetch(`${this._yatriEnergyConfig.baseUrl}/api/charging/validate-user`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this._yatriEnergyConfig.apiKey}` },
+    body: JSON.stringify({ userId: idToken, stationId: context.stationId, action: 'authorize' })
+  });
+
+  const validation = await response.json();
+  return validation.authorized
+    ? OCPP1_6.StartTransactionResponseStatus.Accepted
+    : OCPP1_6.StartTransactionResponseStatus.Invalid;
+}
+```
+
+#### **2. Remote Start Authorization**
+
+```typescript
+// EVDriver Module - Wallet check before remote start
+async remoteStartTransaction(request: OCPP1_6.RemoteStartTransactionRequest) {
+  if (request.idTag) {
+    const walletCheckPassed = await this._checkYatriWalletBalance(request.idTag, tenantId);
+    if (!walletCheckPassed) {
+      return {
+        success: false,
+        payload: { status: OCPP1_6.RemoteStartTransactionResponseStatus.Rejected }
+      };
+    }
+  }
+  // Proceed with OCPP command
+}
+```
+
+#### **3. Remote Stop Transaction**
+
+```typescript
+// EVDriver Module - Log remote stop (payment settlement handled automatically)
+async remoteStopTransaction(request: OCPP1_6.RemoteStopTransactionRequest) {
+  this._logger.info('Remote stop initiated - payment settlement will be processed automatically');
+  // Send OCPP command - when charger responds with StopTransaction, payment settlement triggers
+}
+```
+
+#### **4. Transaction Settlement (All Stop Methods)**
+
+```typescript
+// CitrineOS Core → Yatri Energy Backend (triggered by StopTransaction message)
+async settleTransaction(transaction, finalCost, idToken) {
+  const response = await fetch(`${this._yatriEnergyConfig.baseUrl}/wallet/make-payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this._yatriEnergyConfig.apiKey}` },
+    body: JSON.stringify({
+      idToken: idToken,
+      amount: finalCost,
+      currency: 'NPR',
+      transactionId: parseInt(transaction.transactionId),
+      stationId: transaction.stationId,
+      description: `EV Charging - Station ${transaction.stationId} - ${transaction.totalKwh?.toFixed(2)}kWh`
+    })
+  });
+
+  return await response.json();
+}
+```
+
+### **🔧 Integration Points in CitrineOS**
+
+**Key Files to Modify:**
+
+- `03_Modules/Transactions/src/module/TransactionService.ts:224-229` - RFID authorization with wallet check
+- `03_Modules/EVDriver/src/module/1.6/MessageApi.ts:47-67` - Remote start wallet validation
+- `03_Modules/EVDriver/src/module/1.6/MessageApi.ts:92-98` - Remote stop transaction logging
+- `03_Modules/Transactions/src/module/module.ts:734-735` - Transaction settlement (all stop methods)
+- `02_Util/src/yatri/YatriEnergyClient.ts` - HTTP client for wallet operations
+
+**Configuration Required:**
+
+```typescript
+// Server/src/config/envs/local.ts
+yatriEnergy: {
+  baseUrl: 'http://13.235.140.91/dev',
+  apiKey: process.env.YATRI_ENERGY_API_KEY,
+  timeout: 10000
+}
+```
+
+### **📋 Next Integration Steps**
+
+1. **Analyze Yatri Energy API**: Review swagger documentation for wallet endpoints
+2. **Design HTTP Client**: Create Yatri Energy API service in CitrineOS
+3. **Implement Integration Points**: Add wallet calls to authorization and settlement flows
+4. **Update Configuration**: Add Yatri Energy backend connection settings
+5. **Testing**: End-to-end testing with minimum balance scenarios
 
 ### 📖 **Critical Files for Next Development Phase**
 

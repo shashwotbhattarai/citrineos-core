@@ -49,6 +49,7 @@ import {
   RabbitMqSender,
   RealTimeAuthorizer,
   SignedMeterValuesUtil,
+  YatriEnergyClient,
 } from '@citrineos/util';
 import { ILogObj, Logger } from 'tslog';
 import { TransactionService } from './TransactionService';
@@ -594,6 +595,7 @@ export class TransactionsModule extends AbstractModule {
     const response = await this._transactionService.authorizeOcpp16IdToken(
       message.context,
       request.idTag,
+      this._config as SystemConfig,
     );
 
     // Send response to charger
@@ -729,5 +731,107 @@ export class TransactionsModule extends AbstractModule {
     transaction.stoppedReason = request.reason;
     transaction.endTime = request.timestamp;
     await transaction.save();
+
+    // Process payment settlement (Yatri Energy Integration)
+    await this._processYatriPaymentSettlement(transaction, message);
+  }
+
+  /**
+   * Process payment settlement after transaction completion using Yatri Energy backend
+   */
+  private async _processYatriPaymentSettlement(
+    transaction: Transaction,
+    message: IMessage<OCPP1_6.StopTransactionRequest>,
+  ): Promise<void> {
+    try {
+      // Get system configuration to check if Yatri Energy integration is enabled
+      const config = this._config as SystemConfig;
+      if (!config.yatriEnergy?.enabled) {
+        this._logger.debug(
+          'Yatri Energy wallet integration is disabled, skipping payment settlement',
+        );
+        return;
+      }
+
+      // Get idToken from transaction authorization
+      const idToken = transaction.authorization?.idToken;
+      if (!idToken) {
+        this._logger.warn(
+          `No idToken found for transaction ${transaction.transactionId}, cannot process payment settlement`,
+        );
+        return;
+      }
+
+      // Calculate final cost using CostCalculator
+      const costCalculator = new CostCalculator(
+        this._tariffRepository,
+        this._transactionService,
+        this._logger,
+      );
+      const totalCostAmount = await costCalculator.calculateTotalCost(
+        message.context.tenantId,
+        transaction.stationId,
+        transaction.id,
+        transaction.totalKwh,
+      );
+
+      if (!totalCostAmount || totalCostAmount <= 0) {
+        this._logger.debug(
+          `No cost to charge for transaction ${transaction.transactionId}, skipping payment settlement`,
+        );
+        return;
+      }
+
+      // Create Yatri Energy client
+      const yatriClient = new YatriEnergyClient(
+        config.yatriEnergy.baseUrl,
+        config.yatriEnergy.timeout,
+        config.yatriEnergy.apiKey,
+        this._logger,
+      );
+
+      // Process payment settlement
+      const paymentResponse = await yatriClient.makePayment({
+        idToken,
+        amount: totalCostAmount,
+        currency: 'NPR',
+        transactionId: parseInt(transaction.transactionId),
+        stationId: transaction.stationId,
+        description: `EV Charging - Station ${transaction.stationId} - ${transaction.totalKwh?.toFixed(2)}kWh`,
+        metadata: {
+          tenantId: message.context.tenantId,
+          energyConsumed: transaction.totalKwh,
+          duration:
+            transaction.endTime && transaction.startTransaction?.timestamp
+              ? new Date(transaction.endTime).getTime() -
+                new Date(transaction.startTransaction.timestamp).getTime()
+              : 0,
+          stoppedReason: transaction.stoppedReason,
+        },
+      });
+
+      if (paymentResponse?.success) {
+        this._logger.info(`Payment settlement completed successfully`, {
+          transactionId: transaction.transactionId,
+          idToken,
+          amount: paymentResponse.amount,
+          newBalance: paymentResponse.balance,
+          paymentTransactionId: paymentResponse.transactionId,
+        });
+      } else {
+        this._logger.error(`Payment settlement failed`, {
+          transactionId: transaction.transactionId,
+          idToken,
+          amount: totalCostAmount,
+          message: paymentResponse?.message,
+        });
+      }
+    } catch (error) {
+      this._logger.error(
+        `Yatri Energy payment settlement failed for transaction ${transaction.transactionId}`,
+        error,
+      );
+      // Don't throw error - payment failure should not block transaction completion
+    }
   }
 }
