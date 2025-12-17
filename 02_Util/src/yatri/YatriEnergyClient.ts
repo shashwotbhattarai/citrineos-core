@@ -25,14 +25,17 @@ export interface PaymentRequest {
 }
 
 export interface PaymentResponse {
-  success: boolean;
-  transactionId: string;
+  status: 'COMPLETED' | 'FAILED' | 'PENDING';
+  message: string;
+  yatriWalletId: string;
+  yatriWalletOwnerId: string;
+  yatriWalletTransactionId: string;
   amount: number;
   currency: string;
-  balance: number;
+  newBalance: number;
   timestamp: string;
-  status: 'SUCCESS' | 'FAILED' | 'PENDING';
-  message?: string;
+  remarks: {};
+  additionalData?: Record<string, any>;
 }
 
 export class YatriEnergyClient {
@@ -139,16 +142,14 @@ export class YatriEnergyClient {
         transactionType: 'DEBIT',
         idToken: paymentRequest.idToken,
         transactionAmount: paymentRequest.amount,
-        currency: paymentRequest.currency || 'NPR',
-        remarks:
-          paymentRequest.description ||
-          `EV Charging - Station ${paymentRequest.stationId} - Transaction ${paymentRequest.transactionId}`,
-        initiatedBy: 'CITRINEOS',
+        currency: paymentRequest.currency,
+        remarks: paymentRequest.description,
+        initiatedBy: paymentRequest.idToken,
         serviceCharge: 0,
         discount: 0,
         taxRate: 0,
-        additionalData: paymentRequest.additionalData || {},
-        taxCalculationMethod: 'INCLUSIVE',
+        additionalData: paymentRequest.additionalData,
+        taxCalculationMethod: 'EXCLUSIVE',
       };
 
       this._logger.debug(`Processing payment`, {
@@ -175,25 +176,23 @@ export class YatriEnergyClient {
         return null;
       }
 
-      const data = await response.json();
+      const responseData = await response.json();
 
       const paymentResponse: PaymentResponse = {
-        success: data.success || false,
-        transactionId: data.transactionId || paymentRequest.transactionId?.toString() || '',
-        amount: parseFloat(data.amount) || paymentRequest.amount,
-        currency: data.currency || 'NPR',
-        balance: parseFloat(data.balance) || 0,
-        timestamp: data.timestamp || new Date().toISOString(),
-        status: data.status || 'FAILED',
-        message: data.message,
+        status: responseData.data.status,
+        message: responseData.message,
+        yatriWalletTransactionId: responseData.data.id,
+        yatriWalletId: responseData.data.walletId,
+        yatriWalletOwnerId: responseData.data.ownerId,
+        amount: responseData.data.totalTransactionAmount,
+        currency: responseData.data.currency,
+        newBalance: responseData.data.newBalance,
+        timestamp: responseData.data.createdAt,
+        remarks: responseData.data.remarks,
+        additionalData: responseData.data.additionalData,
       };
 
-      this._logger.info(`Payment processed successfully`, {
-        idToken: paymentRequest.idToken,
-        amount: paymentResponse.amount,
-        newBalance: paymentResponse.balance,
-        status: paymentResponse.status,
-      });
+      this._logger.info(`Payment processed successfully`, paymentResponse);
 
       return paymentResponse;
     } catch (error) {

@@ -810,20 +810,20 @@ export class TransactionsModule extends AbstractModule {
         },
       });
 
-      if (paymentResponse?.success) {
+      if (paymentResponse?.status === 'COMPLETED') {
         this._logger.info(`Payment settlement completed successfully`, {
           transactionId: transaction.transactionId,
           idToken,
           amount: paymentResponse.amount,
-          newBalance: paymentResponse.balance,
-          paymentTransactionId: paymentResponse.transactionId,
+          newBalance: paymentResponse.newBalance,
+          paymentTransactionId: paymentResponse.yatriWalletTransactionId,
         });
       } else {
         this._logger.error(`Payment settlement failed`, {
           transactionId: transaction.transactionId,
           idToken,
-          amount: totalCostAmount,
-          message: paymentResponse?.message,
+          totalamount: totalCostAmount,
+          message: paymentResponse?.remarks,
         });
       }
     } catch (error) {
