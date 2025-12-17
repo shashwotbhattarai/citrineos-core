@@ -133,14 +133,32 @@ export class YatriEnergyClient {
     try {
       const url = `${this._baseUrl}/wallet/make-payment`;
 
+      // Transform payload to match Yatri backend API schema
+      const yatriPayload = {
+        platform: 'ENERGY',
+        transactionType: 'DEBIT',
+        idToken: paymentRequest.idToken,
+        transactionAmount: paymentRequest.amount,
+        currency: paymentRequest.currency || 'NPR',
+        remarks:
+          paymentRequest.description ||
+          `EV Charging - Station ${paymentRequest.stationId} - Transaction ${paymentRequest.transactionId}`,
+        initiatedBy: 'CITRINEOS',
+        serviceCharge: 0,
+        discount: 0,
+        taxRate: 0,
+        additionalData: paymentRequest.additionalData || {},
+        taxCalculationMethod: 'INCLUSIVE',
+      };
+
       this._logger.debug(`Processing payment`, {
         idToken: paymentRequest.idToken,
-        amount: paymentRequest.amount,
-        transactionId: paymentRequest.transactionId,
+        originalAmount: paymentRequest.amount,
+        transformedPayload: yatriPayload,
         url: url,
       });
 
-      const response = await this._makeRequest('POST', url, paymentRequest);
+      const response = await this._makeRequest('POST', url, yatriPayload);
 
       if (!response) {
         this._logger.error(`No response received from Yatri backend`);
@@ -150,7 +168,10 @@ export class YatriEnergyClient {
       this._logger.debug(`Yatri backend response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
-        this._logger.warn(`Payment request failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        this._logger.warn(`Payment request failed: ${response.status} ${response.statusText}`, {
+          errorText,
+        });
         return null;
       }
 
@@ -158,8 +179,8 @@ export class YatriEnergyClient {
 
       const paymentResponse: PaymentResponse = {
         success: data.success || false,
-        transactionId: data.transactionId || '',
-        amount: parseFloat(data.amount) || 0,
+        transactionId: data.transactionId || paymentRequest.transactionId?.toString() || '',
+        amount: parseFloat(data.amount) || paymentRequest.amount,
         currency: data.currency || 'NPR',
         balance: parseFloat(data.balance) || 0,
         timestamp: data.timestamp || new Date().toISOString(),
