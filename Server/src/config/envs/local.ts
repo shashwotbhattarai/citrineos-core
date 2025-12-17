@@ -244,11 +244,11 @@ export function createLocalConfig() {
       // None by default
     },
     yatriEnergy: {
-      baseUrl: process.env.YATRI_ENERGY_BASE_URL || 'http://13.235.140.91',
-      apiKey: process.env.YATRI_ENERGY_API_KEY,
+      baseUrl: process.env.YATRI_ENERGY_BASE_URL || '',
+      apiKey: process.env.YATRI_ENERGY_API_KEY || '',
       timeout: parseInt(process.env.YATRI_ENERGY_TIMEOUT || '10000', 10),
       minimumBalance: parseFloat(process.env.YATRI_MINIMUM_BALANCE || '100.0'),
-      enabled: process.env.YATRI_WALLET_INTEGRATION_ENABLED === 'true',
+      enabled: process.env.YATRI_WALLET_INTEGRATION_ENABLED || 'false',
     },
   });
 }

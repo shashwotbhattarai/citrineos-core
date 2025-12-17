@@ -267,15 +267,13 @@ export const systemConfigInputSchema = z.object({
   }),
   rbacRulesFileName: z.string().default('rbac-rules.json').optional(),
   rbacRulesDir: z.string().optional(),
-  yatriEnergy: z
-    .object({
-      baseUrl: z.string().default('http://13.235.140.91').optional(),
-      apiKey: z.string().optional(),
-      timeout: z.number().int().positive().default(10000).optional(),
-      minimumBalance: z.number().positive().default(100.0).optional(),
-      enabled: z.boolean().default(false).optional(),
-    })
-    .optional(),
+  yatriEnergy: z.object({
+    baseUrl: z.string(),
+    apiKey: z.string(),
+    timeout: z.number().int().positive(),
+    minimumBalance: z.number().positive(),
+    enabled: z.string(),
+  }),
 });
 
 export type SystemConfigInput = z.infer<typeof systemConfigInputSchema>;
@@ -559,15 +557,13 @@ export const systemConfigSchema = z
     rbacRulesFileName: z.string().optional(),
     rbacRulesDir: z.string().optional(),
     oidcClient: oidcClientConfigSchema,
-    yatriEnergy: z
-      .object({
-        baseUrl: z.string(),
-        apiKey: z.string().optional(),
-        timeout: z.number().int().positive(),
-        minimumBalance: z.number().positive(),
-        enabled: z.boolean(),
-      })
-      .optional(),
+    yatriEnergy: z.object({
+      baseUrl: z.string(),
+      apiKey: z.string(),
+      timeout: z.number().int().positive(),
+      minimumBalance: z.number().positive(),
+      enabled: z.string(),
+    }),
   })
   .refine((obj) => obj.maxCachingSeconds >= obj.maxCallLengthSeconds, {
     message: 'maxCachingSeconds cannot be less than maxCallLengthSeconds',

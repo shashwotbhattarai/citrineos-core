@@ -98,6 +98,11 @@ services:
       # CITRINEOS_CONFIG_DIR: '/custom/config/path'  # Optional - uncomment if needed
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 'local'
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: '/data'
+      YATRI_ENERGY_BASE_URL: 'http://13.235.140.91'
+      YATRI_ENERGY_API_KEY: ''
+      YATRI_ENERGY_TIMEOUT: '10000'
+      YATRI_MINIMUM_BALANCE: '100.0'
+      YATRI_WALLET_INTEGRATION_ENABLED: true
     depends_on:
       ocpp-db:
         condition: service_healthy
@@ -114,7 +119,11 @@ services:
       - 9229:9229
       - 8092:8092
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "const net = require(\"net\"); const client = net.createConnection(8080, \"127.0.0.1\", () => { client.end(); process.exit(0); }); client.on(\"error\", () => process.exit(1)); client.setTimeout(5000, () => { client.destroy(); process.exit(1); });"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const net = require(\"net\"); const client = net.createConnection(8080, \"127.0.0.1\", () => { client.end(); process.exit(0); }); client.on(\"error\", () => process.exit(1)); client.setTimeout(5000, () => { client.destroy(); process.exit(1); });"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
