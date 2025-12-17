@@ -137,9 +137,16 @@ export class YatriEnergyClient {
         idToken: paymentRequest.idToken,
         amount: paymentRequest.amount,
         transactionId: paymentRequest.transactionId,
+        url: url,
       });
 
       const response = await this._makeRequest('POST', url, paymentRequest);
+
+      if (!response) {
+        this._logger.error(`No response received from Yatri backend`);
+        return null;
+      }
+
       this._logger.debug(`Yatri backend response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
@@ -169,7 +176,15 @@ export class YatriEnergyClient {
 
       return paymentResponse;
     } catch (error) {
-      this._logger.error(`Failed to process payment`, { paymentRequest, error });
+      this._logger.error(`Failed to process payment`, {
+        paymentRequest: {
+          idToken: paymentRequest.idToken,
+          amount: paymentRequest.amount,
+          transactionId: paymentRequest.transactionId,
+          url: `${this._baseUrl}/wallet/make-payment`,
+        },
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }
@@ -182,28 +197,39 @@ export class YatriEnergyClient {
     url: string,
     body?: any,
   ): Promise<Response> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'User-Agent': 'CitrineOS-YatriEnergyClient/1.0',
-    };
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'CitrineOS-YatriEnergyClient/1.0',
+      };
 
-    if (this._apiKey) {
-      headers['Authorization'] = `Bearer ${this._apiKey}`;
+      if (this._apiKey) {
+        headers['Authorization'] = `Bearer ${this._apiKey}`;
+      }
+
+      const requestOptions: RequestInit = {
+        method,
+        headers,
+        signal: AbortSignal.timeout(this._timeout),
+      };
+
+      if (body && (method === 'POST' || method === 'PUT')) {
+        requestOptions.body = JSON.stringify(body);
+      }
+
+      this._logger.debug(`Making ${method} request to ${url}`);
+
+      const response = await fetch(url, requestOptions);
+
+      if (!response) {
+        throw new Error('Fetch returned undefined response');
+      }
+
+      return response;
+    } catch (error) {
+      this._logger.error(`HTTP request failed: ${method} ${url}`, error);
+      throw error;
     }
-
-    const requestOptions: RequestInit = {
-      method,
-      headers,
-      signal: AbortSignal.timeout(this._timeout),
-    };
-
-    if (body && (method === 'POST' || method === 'PUT')) {
-      requestOptions.body = JSON.stringify(body);
-    }
-
-    this._logger.debug(`Making ${method} request to ${url}`);
-
-    return fetch(url, requestOptions);
   }
 
   /**
