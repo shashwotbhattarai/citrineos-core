@@ -798,7 +798,7 @@ export class TransactionsModule extends AbstractModule {
         transactionId: parseInt(transaction.transactionId),
         stationId: transaction.stationId,
         description: `EV Charging - Station ${transaction.stationId} - ${transaction.totalKwh?.toFixed(2)}kWh`,
-        metadata: {
+        additionalData: {
           tenantId: message.context.tenantId,
           energyConsumed: transaction.totalKwh,
           duration:

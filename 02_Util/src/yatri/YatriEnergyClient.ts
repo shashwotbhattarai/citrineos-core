@@ -21,7 +21,7 @@ export interface PaymentRequest {
   transactionId?: number;
   stationId?: string;
   description?: string;
-  metadata?: Record<string, any>;
+  additionalData?: Record<string, any>;
 }
 
 export interface PaymentResponse {
