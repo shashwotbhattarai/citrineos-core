@@ -140,6 +140,7 @@ export class YatriEnergyClient {
       });
 
       const response = await this._makeRequest('POST', url, paymentRequest);
+      this._logger.warn('yatri backend response', response);
 
       if (!response.ok) {
         this._logger.warn(`Payment request failed: ${response.status} ${response.statusText}`);
