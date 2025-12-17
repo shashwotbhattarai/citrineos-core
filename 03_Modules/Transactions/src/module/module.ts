@@ -694,7 +694,7 @@ export class TransactionsModule extends AbstractModule {
         stationId,
         transactionId: request.transactionId.toString(),
       },
-      include: [StartTransaction],
+      include: [StartTransaction, Authorization],
     });
 
     if (!transaction) {
