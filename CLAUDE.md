@@ -1,6 +1,61 @@
 # CitrinOS Core - CSMS Backend Documentation
 
+**Last Updated**: December 29, 2025
+**For Claude**: This is the entry point. Start here, then reference supporting docs.
+
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
+
+---
+
+## Quick Reference (Start Here)
+
+### Supporting Documentation
+
+| Document                         | Purpose                             | When to Use                      |
+| -------------------------------- | ----------------------------------- | -------------------------------- |
+| **[INDEX.md](./INDEX.md)**       | Navigation & document relationships | Find the right doc for your task |
+| **[GLOSSARY.md](./GLOSSARY.md)** | Terminology definitions             | Clarify idTag vs IdToken, etc.   |
+| **[STATUS.md](./STATUS.md)**     | Implementation status               | Know what's working vs planned   |
+
+### Standard Values (Use These in All Examples)
+
+```yaml
+# AUTHORITATIVE VALUES - Override any conflicting values in other docs
+tenantId: 1 # NOT 2 or 3
+ocpp16Station: 'yatri-1-ioc-1-sec1' # Production OCPP 1.6 station
+ocpp201Station: 'yatri-ac-hw-001' # OCPP 2.0.1 station
+rfidToken: 'D6A3FA03' # Test RFID card
+ocpp16Port: 8092 # OCPP 1.6 WebSocket
+ocpp201Port: 8081 # OCPP 2.0.1 WebSocket
+apiPort: 8080 # REST API
+graphqlPort: 8090 # Hasura GraphQL
+productionServer: '13.204.177.82' # AWS production
+currency: 'NPR' # Nepalese Rupee
+vatRate: 0.13 # 13% VAT
+```
+
+> ⚠️ **Note**: Some older docs (GOING_TO_PRODUCTION.md, API_REFERENCE.md) use `tenantId=2` or `tenantId=3`. The correct production value is **`tenantId=1`**. Use the values above.
+
+### Quick API Examples
+
+```bash
+# OCPP 1.6 Remote Start (PRODUCTION)
+curl -X POST "http://13.204.177.82:8080/ocpp/1.6/evdriver/remoteStartTransaction?identifier=yatri-1-ioc-1-sec1&tenantId=1" \
+  -H "Content-Type: application/json" \
+  -d '{"connectorId": 1, "idTag": "D6A3FA03"}'
+
+# OCPP 1.6 Remote Stop
+curl -X POST "http://13.204.177.82:8080/ocpp/1.6/evdriver/remoteStopTransaction?identifier=yatri-1-ioc-1-sec1&tenantId=1" \
+  -H "Content-Type: application/json" \
+  -d '{"transactionId": 1}'
+
+# Send Local Auth List (batch to multiple chargers)
+curl -X POST "http://localhost:8080/ocpp/1.6/evdriver/sendLocalList?identifier=charger1&identifier=charger2&tenantId=1" \
+  -H "Content-Type: application/json" \
+  -d '{"listVersion": 1, "updateType": "Full", "localAuthorizationList": [{"idTag": "D6A3FA03", "idTagInfo": {"status": "Accepted"}}]}'
+```
+
+---
 
 ## Project Overview
 

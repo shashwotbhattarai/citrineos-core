@@ -2,7 +2,11 @@
 
 _Complete implementation guide incorporating OCPP version compatibility, advanced billing, offline operations, and wallet integration_
 
-**Updated: August 22, 2025 - Includes advanced technical insights from deep dive sessions**
+**Last Updated**: December 29, 2025
+**Status**: Primary production guide
+
+> ⚠️ **Note**: Some examples in this document use `tenantId=2`. The correct production value is **`tenantId=1`**.
+> See **[CLAUDE.md](./CLAUDE.md)** for authoritative values.
 
 ---
 

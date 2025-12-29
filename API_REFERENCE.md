@@ -1,5 +1,12 @@
 # CitrineOS CSMS - Complete API Reference
 
+**Last Updated**: December 29, 2025
+
+> ⚠️ **Note**: Some examples in this document use `tenantId=2`. The correct production value is **`tenantId=1`**.
+> See **[CLAUDE.md](./CLAUDE.md)** for authoritative values and tested API examples.
+
+---
+
 ## 🎯 Phase 2 Goal Achievement
 
 **Objective**: Enable creation of multiple CPOs, locations, chargers, EV driver authentication, charging operations, transaction management, and detailed monitoring.
