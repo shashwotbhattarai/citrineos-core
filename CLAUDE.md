@@ -216,7 +216,8 @@ Tenant (CPO) → Location → ChargingStation → Evse → Connector
 - **ARCHITECTURE.md**: Complete system architecture analysis
 - **API_REFERENCE.md**: Comprehensive API documentation for all modules
 - **GOING_TO_PRODUCTION_V2.md**: Advanced implementation guide with OCPP compatibility
-- **ADVANCED_OPERATIONS.md**: Deep technical dive on offline operations and billing
+- **ADVANCED_OPERATIONS.md**: Deep technical dive on offline operations and billing (OCPP 2.0.1)
+- **OCPP_1.6_OFFLINE_TRANSACTIONS_GUIDE.md**: OCPP 1.6 offline charging, Local Auth List management, and wallet settlement
 
 ### **Protocol Compatibility**
 
