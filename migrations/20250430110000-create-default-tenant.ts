@@ -19,7 +19,7 @@ export = {
       await queryInterface.bulkInsert(TENANTS_TABLE, [
         {
           id: DEFAULT_TENANT_ID,
-          name: 'Default Tenant',
+          name: 'Yatri Energy',
           createdAt: new Date(),
           updatedAt: new Date(),
         },
