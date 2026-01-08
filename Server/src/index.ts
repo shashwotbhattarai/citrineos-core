@@ -261,6 +261,7 @@ export class CitrineOSServer {
           id: websocketServerConfig.id,
         },
       });
+      serverNetworkProfile.tenantId = websocketServerConfig.tenantId;
       serverNetworkProfile.host = websocketServerConfig.host;
       serverNetworkProfile.port = websocketServerConfig.port;
       serverNetworkProfile.pingInterval = websocketServerConfig.pingInterval;
