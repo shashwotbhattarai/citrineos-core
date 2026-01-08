@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: December 29, 2025
+**Last Updated**: January 8, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -35,6 +35,69 @@ vatRate: 0.13 # 13% VAT
 ```
 
 > ⚠️ **Note**: Some older docs (GOING_TO_PRODUCTION.md, API_REFERENCE.md) use `tenantId=2` or `tenantId=3`. The correct production value is **`tenantId=1`**. Use the values above.
+
+### 🚨 Multi-Tenant Enforcement (CRITICAL)
+
+**As of January 2026**, CitrineOS enforces **explicit tenantId** on all database operations. The system will **reject** any create/update operation that doesn't include a `tenantId`.
+
+#### What Changed
+
+**File**: `01_Data/src/layers/sequelize/model/BaseModelWithTenant.ts`
+
+| Before                                                | After                                       |
+| ----------------------------------------------------- | ------------------------------------------- |
+| Auto-assigned `DEFAULT_TENANT_ID` (1) if not provided | Throws error if `tenantId` is missing       |
+| Silent data assignment to default tenant              | Explicit rejection with clear error message |
+
+#### Error Message
+
+```
+Error: tenantId is required and must be explicitly provided.
+Model: Location.
+Operation rejected to prevent data being assigned to wrong tenant.
+```
+
+#### Why This Matters
+
+- **Data Isolation**: Prevents accidental cross-tenant data leakage
+- **Multi-CPO Safety**: Each CPO's data stays in their tenant
+- **Explicit Intent**: Forces developers to consciously specify tenant context
+- **Audit Compliance**: Clear accountability for data ownership
+
+#### How to Fix API Calls
+
+All API calls and GraphQL mutations **MUST** include `tenantId`:
+
+```bash
+# ✅ CORRECT - explicit tenantId
+curl -X POST "http://localhost:8080/ocpp/1.6/evdriver/remoteStartTransaction?identifier=charger-1&tenantId=1"
+
+# ❌ WRONG - missing tenantId (will fail)
+curl -X POST "http://localhost:8080/ocpp/1.6/evdriver/remoteStartTransaction?identifier=charger-1"
+```
+
+```graphql
+# ✅ CORRECT - explicit tenantId in mutation
+mutation {
+  insert_Locations_one(
+    object: {
+      name: "New Location"
+      tenantId: 1 # REQUIRED
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# ❌ WRONG - missing tenantId (will fail)
+mutation {
+  insert_Locations_one(object: { name: "New Location" }) {
+    id
+    name
+  }
+}
+```
 
 ### Quick API Examples
 

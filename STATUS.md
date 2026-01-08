@@ -1,6 +1,6 @@
 # CitrineOS Implementation Status
 
-**Last Updated**: December 29, 2025
+**Last Updated**: January 8, 2026
 **Purpose**: Single source of truth for what's implemented vs planned
 **For Claude**: Check this before suggesting implementations
 
@@ -79,6 +79,42 @@
 | Session Fees         | ✅     | Flat connection fee |
 | VAT Calculation      | ✅     | 13% Nepal VAT       |
 | High-Precision Math  | ✅     | Big.js Money class  |
+
+### Multi-Tenant Architecture
+
+| Feature                        | Status | Notes                                      |
+| ------------------------------ | ------ | ------------------------------------------ |
+| Tenant Model                   | ✅     | `Tenants` table with OCPI fields           |
+| Default Tenant                 | ✅     | ID: 1, created by migration                |
+| **Explicit tenantId Required** | ✅     | **Enforced Jan 2026** - no auto-assignment |
+| Tenant-aware Models            | ✅     | 42+ models extend `BaseModelWithTenant`    |
+| Per-tenant WebSocket Servers   | ✅     | Each server assigned to specific tenant    |
+| TenantPartner (OCPI Roaming)   | ✅     | For eMSP roaming partners                  |
+| Tenant Isolation Validation    | 📋     | Needs testing                              |
+| Multi-tenant Dashboard         | 📋     | Planned for yatri-energy-dash-frontend     |
+
+#### Multi-Tenant Enforcement Details
+
+**File Modified**: `01_Data/src/layers/sequelize/model/BaseModelWithTenant.ts`
+
+**Behavior Change** (January 2026):
+
+- ❌ **Before**: Missing `tenantId` → Auto-assigned to `DEFAULT_TENANT_ID` (1)
+- ✅ **After**: Missing `tenantId` → **Error thrown**, operation rejected
+
+**Error Message**:
+
+```
+tenantId is required and must be explicitly provided.
+Model: [ModelName].
+Operation rejected to prevent data being assigned to wrong tenant.
+```
+
+**Impact**: All create/update operations on tenant-aware models require explicit `tenantId` in:
+
+- REST API calls (`?tenantId=1`)
+- GraphQL mutations (`tenantId: 1`)
+- Direct repository calls
 
 ---
 
@@ -236,6 +272,7 @@
 
 ### Priority 4: Multi-CPO Support
 
+- [x] **Enforce explicit tenantId** (Jan 2026) ✅
 - [ ] Test tenant isolation
 - [ ] Implement tenant switching
 - [ ] Configure per-tenant billing

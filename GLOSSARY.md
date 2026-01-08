@@ -1,6 +1,6 @@
 # CitrineOS Glossary
 
-**Last Updated**: December 29, 2025
+**Last Updated**: January 8, 2026
 **Purpose**: Standardized terminology for all documentation
 **For Claude**: Use these exact terms when discussing the project
 
@@ -73,6 +73,47 @@
 | **Handler**    | Function that processes incoming OCPP messages       | `@AsHandler` decorator                     |
 | **MessageApi** | REST API endpoints for sending OCPP commands         | `@AsMessageEndpoint` decorator             |
 | **Tenant**     | Multi-tenant isolation unit (CPO)                    | Database `tenantId` field                  |
+
+### Multi-Tenant Terms
+
+| Term                    | Definition                                                       | Notes                                      |
+| ----------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| **Tenant**              | Isolated data partition for a CPO organization                   | Each tenant has separate data              |
+| **tenantId**            | Integer foreign key linking records to a tenant                  | **Required on all operations (Jan 2026)**  |
+| **DEFAULT_TENANT_ID**   | Constant value `1` for default tenant                            | Still exists but no longer auto-assigned   |
+| **BaseModelWithTenant** | Abstract base class for all tenant-aware models                  | `01_Data/.../model/BaseModelWithTenant.ts` |
+| **TenantPartner**       | OCPI roaming partner associated with a tenant                    | For eMSP partnerships                      |
+| **Tenant Isolation**    | Security principle ensuring data never crosses tenant boundaries | Enforced at model level                    |
+| **Explicit tenantId**   | Requirement that tenantId must be provided, not auto-assigned    | **Enforced since January 2026**            |
+
+#### Multi-Tenant Enforcement (January 2026)
+
+> ⚠️ **BREAKING CHANGE**: As of January 2026, `tenantId` is **required** on all database operations.
+
+**Before** (auto-assignment):
+
+```typescript
+// Missing tenantId → silently assigned to tenant 1
+await Location.create({ name: 'New Location' });
+```
+
+**After** (explicit requirement):
+
+```typescript
+// Missing tenantId → ERROR thrown
+await Location.create({ name: 'New Location' });
+// Error: tenantId is required and must be explicitly provided.
+
+// Correct usage
+await Location.create({ name: 'New Location', tenantId: 1 });
+```
+
+**Affected Operations**:
+
+- All `create()` calls on tenant-aware models
+- All `update()` calls on tenant-aware models
+- GraphQL mutations via Hasura
+- REST API endpoints that create/update data
 
 ### Database Terms
 
