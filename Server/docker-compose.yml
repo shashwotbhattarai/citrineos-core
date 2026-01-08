@@ -98,7 +98,7 @@ services:
       # CITRINEOS_CONFIG_DIR: '/custom/config/path'  # Optional - uncomment if needed
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 'local'
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: '/data'
-      YATRI_ENERGY_BASE_URL: 'http://13.235.140.91'
+      YATRI_ENERGY_BASE_URL: 'https://api.dev.yatri-energy.yatrimotorcycle.com'
       YATRI_ENERGY_API_KEY: ''
       YATRI_ENERGY_TIMEOUT: '10000'
       YATRI_MINIMUM_BALANCE: '100.0'
