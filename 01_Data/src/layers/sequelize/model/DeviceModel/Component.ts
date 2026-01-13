@@ -20,7 +20,7 @@ import { EvseType } from './EvseType';
   indexes: [
     {
       unique: true,
-      fields: ['name'],
+      fields: ['name', 'tenantId'],
       where: {
         instance: null,
       },
