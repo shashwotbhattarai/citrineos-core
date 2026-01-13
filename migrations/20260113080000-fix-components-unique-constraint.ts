@@ -8,11 +8,11 @@ import { QueryInterface } from 'sequelize';
 
 export = {
   up: async (queryInterface: QueryInterface) => {
-    // Fix Components and Variables unique constraints to include tenantId for multi-tenant support
+    // Fix Components unique constraints to include tenantId for multi-tenant support
     // The old constraints only had 'name' or 'name+instance' which prevented multiple
-    // tenants from having the same component/variable (e.g., SecurityCtrlr, BasicAuthPassword)
+    // tenants from having the same component (e.g., SecurityCtrlr)
+    // NOTE: Variables fixes are in a separate migration (20260113091800-fix-variables-unique-constraint.ts)
 
-    // ============ COMPONENTS TABLE ============
     // 1. Drop the old unique index on 'name' only (lowercase - PostgreSQL default)
     await queryInterface.sequelize.query('DROP INDEX IF EXISTS components_name;');
     await queryInterface.sequelize.query('DROP INDEX IF EXISTS "Components_name";');
@@ -31,30 +31,9 @@ export = {
     await queryInterface.sequelize.query(
       'CREATE UNIQUE INDEX IF NOT EXISTS "Components_name_instance_tenantId_key" ON "Components" ("name", "instance", "tenantId");',
     );
-
-    // ============ VARIABLES TABLE ============
-    // 5. Drop the old unique index on 'name' only
-    await queryInterface.sequelize.query('DROP INDEX IF EXISTS variables_name;');
-    await queryInterface.sequelize.query('DROP INDEX IF EXISTS "Variables_name";');
-
-    // 6. Drop the old constraint on 'name' + 'instance' (without tenantId)
-    await queryInterface.sequelize.query(
-      'ALTER TABLE "Variables" DROP CONSTRAINT IF EXISTS "Variables_name_instance_key";',
-    );
-
-    // 7. Create new unique index on 'name' + 'tenantId' for null instance
-    await queryInterface.sequelize.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS "Variables_name_tenantId" ON "Variables" ("name", "tenantId") WHERE instance IS NULL;',
-    );
-
-    // 8. Create new unique constraint on 'name' + 'instance' + 'tenantId'
-    await queryInterface.sequelize.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS "Variables_name_instance_tenantId_key" ON "Variables" ("name", "instance", "tenantId");',
-    );
   },
 
   down: async (queryInterface: QueryInterface) => {
-    // ============ REVERT COMPONENTS ============
     await queryInterface.sequelize.query('DROP INDEX IF EXISTS "Components_name_tenantId";');
     await queryInterface.sequelize.query(
       'DROP INDEX IF EXISTS "Components_name_instance_tenantId_key";',
@@ -64,18 +43,6 @@ export = {
     );
     await queryInterface.sequelize.query(
       'ALTER TABLE "Components" ADD CONSTRAINT "Components_name_instance_key" UNIQUE ("name", "instance");',
-    );
-
-    // ============ REVERT VARIABLES ============
-    await queryInterface.sequelize.query('DROP INDEX IF EXISTS "Variables_name_tenantId";');
-    await queryInterface.sequelize.query(
-      'DROP INDEX IF EXISTS "Variables_name_instance_tenantId_key";',
-    );
-    await queryInterface.sequelize.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS variables_name ON "Variables" ("name") WHERE instance IS NULL;',
-    );
-    await queryInterface.sequelize.query(
-      'ALTER TABLE "Variables" ADD CONSTRAINT "Variables_name_instance_key" UNIQUE ("name", "instance");',
     );
   },
 };
