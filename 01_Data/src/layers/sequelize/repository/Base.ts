@@ -40,7 +40,14 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     key: string | number,
     namespace: string = this.namespace,
   ): Promise<T | undefined> {
-    return await this.s.models[namespace].findByPk(key).then((row) => row as T);
+    return await this.s.models[namespace]
+      .findOne({
+        where: {
+          [this.s.models[namespace].primaryKeyAttribute]: key,
+          tenantId,
+        },
+      } as FindOptions<any>)
+      .then((row) => row as T | undefined);
   }
 
   async readAllByQuery(
@@ -48,8 +55,9 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     query: object,
     namespace: string = this.namespace,
   ): Promise<T[]> {
+    const queryWithTenant = this._addTenantIdToQuery(query, tenantId);
     return await this.s.models[namespace]
-      .findAll(query as FindOptions<any>)
+      .findAll(queryWithTenant as FindOptions<any>)
       .then((row) => row as T[]);
   }
 
@@ -85,7 +93,14 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     key: string,
     namespace: string = this.namespace,
   ): Promise<boolean> {
-    return await this.s.models[namespace].findByPk(key).then((row) => row !== null);
+    return await this.s.models[namespace]
+      .findOne({
+        where: {
+          [this.s.models[namespace].primaryKeyAttribute]: key,
+          tenantId,
+        },
+      } as FindOptions<any>)
+      .then((row) => row !== null);
   }
 
   async existByQuery(
@@ -93,7 +108,8 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     query: object,
     namespace: string = this.namespace,
   ): Promise<number> {
-    return await this.s.models[namespace].findAll(query).then((row) => row.length);
+    const queryWithTenant = this._addTenantIdToQuery(query, tenantId);
+    return await this.s.models[namespace].findAll(queryWithTenant).then((row) => row.length);
   }
 
   async findAndCount(
@@ -101,7 +117,10 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     options: Omit<FindAndCountOptions<Attributes<T>>, 'group'>,
     namespace: string = this.namespace,
   ): Promise<{ rows: T[]; count: number }> {
-    return (this.s.models[namespace] as ModelStatic<T>).findAndCountAll(options);
+    const optionsWithTenant = this._addTenantIdToQuery(options, tenantId);
+    return (this.s.models[namespace] as ModelStatic<T>).findAndCountAll(
+      optionsWithTenant as Omit<FindAndCountOptions<Attributes<T>>, 'group'>,
+    );
   }
 
   protected async _create(
@@ -136,8 +155,9 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     query: object,
     namespace: string = this.namespace,
   ): Promise<[T, boolean]> {
+    const queryWithTenant = this._addTenantIdToQuery(query, tenantId);
     return await this.s.models[namespace]
-      .findOrCreate(query as FindOptions<any>)
+      .findOrCreate(queryWithTenant as FindOptions<any>)
       .then((result) => [result[0] as T, result[1]]);
   }
 
@@ -151,7 +171,7 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     return await this._updateAllByQuery(
       tenantId,
       value,
-      { where: { [primaryKey]: key } },
+      { where: { [primaryKey]: key, tenantId } },
       namespace,
     ).then((rows) => (rows && rows.length === 1 ? rows[0] : undefined));
   }
@@ -162,7 +182,8 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     query: object,
     namespace: string = this.namespace,
   ): Promise<T[]> {
-    const updateOptions = query as UpdateOptions<any>;
+    const queryWithTenant = this._addTenantIdToQuery(query, tenantId);
+    const updateOptions = queryWithTenant as UpdateOptions<any>;
     updateOptions.returning = true;
     // Lengthy type conversion to satisfy sequelize-typescript
     return await (this.s.models[namespace] as ModelStatic<T>)
@@ -180,14 +201,18 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     key: string,
     namespace: string = this.namespace,
   ): Promise<T | undefined> {
+    const primaryKey = this.s.models[namespace].primaryKeyAttribute;
     return this.s.transaction(async (transaction) => {
       const entryToDelete = await this.s.models[namespace]
-        .findByPk(key, { transaction })
+        .findOne({
+          where: { [primaryKey]: key, tenantId },
+          transaction,
+        } as FindOptions<any>)
         .then((row) => row as T);
 
       if (entryToDelete) {
         await this.s.models[namespace].destroy({
-          where: { [this.s.models[namespace].primaryKeyAttribute]: key },
+          where: { [primaryKey]: key, tenantId },
           transaction,
         });
         return entryToDelete;
@@ -202,15 +227,19 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
     query: object,
     namespace: string = this.namespace,
   ): Promise<T[]> {
+    const queryWithTenant = this._addTenantIdToQuery(query, tenantId);
     return this.s.transaction(async (transaction) => {
       const entriesToDelete = await this.s.models[namespace]
         .findAll({
-          ...query,
+          ...queryWithTenant,
           transaction,
         })
         .then((rows) => rows as T[]);
 
-      const deletedCount = await this.s.models[namespace].destroy({ ...query, transaction });
+      const deletedCount = await this.s.models[namespace].destroy({
+        ...queryWithTenant,
+        transaction,
+      });
 
       if (entriesToDelete.length === deletedCount) {
         return entriesToDelete;
@@ -218,5 +247,20 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
         throw new Error(`Deleted ${deletedCount} entries, expected ${entriesToDelete.length}`);
       }
     });
+  }
+
+  /**
+   * Helper method to add tenantId to query where clause.
+   * Ensures all database operations are properly filtered by tenant.
+   */
+  protected _addTenantIdToQuery(query: object, tenantId: number): object {
+    const queryObj = query as FindOptions<any>;
+    return {
+      ...queryObj,
+      where: {
+        ...queryObj.where,
+        tenantId,
+      },
+    };
   }
 }

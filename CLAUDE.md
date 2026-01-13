@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 8, 2026
+**Last Updated**: January 13, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -98,6 +98,153 @@ mutation {
   }
 }
 ```
+
+### 🔧 Multi-Tenant Unique Constraint Fixes (January 13, 2026)
+
+**Issue**: The `Components` and `Variables` tables had unique constraints that didn't include `tenantId`, preventing multiple tenants from having the same component/variable names (e.g., `SecurityCtrlr`, `BasicAuthPassword`).
+
+#### Problems Fixed
+
+| Table      | Old Constraint                        | Problem                                       |
+| ---------- | ------------------------------------- | --------------------------------------------- |
+| Components | `UNIQUE(name)` where instance IS NULL | Only one `SecurityCtrlr` allowed globally     |
+| Components | `UNIQUE(name, instance)`              | Only one component per name+instance globally |
+| Variables  | `UNIQUE(name)` where instance IS NULL | Only one `BasicAuthPassword` allowed globally |
+| Variables  | `UNIQUE(name, instance)`              | Only one variable per name+instance globally  |
+
+#### Solution
+
+Added `tenantId` to all unique constraints to enable proper multi-tenant isolation.
+
+#### Files Changed
+
+**Model Files:**
+
+- `01_Data/src/layers/sequelize/model/DeviceModel/Component.ts`
+- `01_Data/src/layers/sequelize/model/DeviceModel/Variable.ts`
+
+**Migration Files:**
+
+- `migrations/20260113080000-fix-components-unique-constraint.ts` - Fixes Components table
+- `migrations/20260113091800-fix-variables-unique-constraint.ts` - Fixes Variables table
+
+#### New Constraints
+
+| Table      | New Constraint                                  |
+| ---------- | ----------------------------------------------- |
+| Components | `UNIQUE(name, tenantId)` where instance IS NULL |
+| Components | `UNIQUE(name, instance, tenantId)`              |
+| Variables  | `UNIQUE(name, tenantId)` where instance IS NULL |
+| Variables  | `UNIQUE(name, instance, tenantId)`              |
+
+### 🔧 Password API Fix (January 13, 2026)
+
+**Issue**: The `setOnCharger` parameter logic was inverted in the password update API.
+
+**File**: `03_Modules/Configuration/src/module/DataApi.ts:129`
+
+| Before (Bug)                      | After (Fixed)                    |
+| --------------------------------- | -------------------------------- |
+| `if (!request.body.setOnCharger)` | `if (request.body.setOnCharger)` |
+
+**Behavior:**
+
+- `setOnCharger: false` → Only updates database (no OCPP message)
+- `setOnCharger: true` → Updates database AND sends OCPP message to charger
+
+### 🔧 WebSocket Tenant Routing (Important Note)
+
+Each WebSocket server is configured with a specific `tenantId`. Chargers connecting to that port will be authenticated against that tenant's credentials.
+
+**Configuration Location**: `Server/src/config/envs/*.ts` → `websocketServers` array
+
+```json
+{
+  "id": "4",
+  "host": "0.0.0.0",
+  "port": 8092,
+  "protocol": "ocpp1.6",
+  "securityProfile": 1,
+  "tenantId": 1 // Chargers on this port authenticate against tenant 1
+}
+```
+
+**To support multiple tenants**, create separate WebSocket server entries with different ports:
+
+```json
+[
+  { "port": 8092, "tenantId": 1, "protocol": "ocpp1.6" },
+  { "port": 8093, "tenantId": 2, "protocol": "ocpp1.6" },
+  { "port": 8094, "tenantId": 3, "protocol": "ocpp1.6" }
+]
+```
+
+**Password API must use matching tenantId:**
+
+```bash
+# Charger on port 8093 (tenantId: 2)
+curl -X POST "http://server:8080/data/configuration/password?tenantId=2" \
+  -H "Content-Type: application/json" \
+  -d '{"stationId": "charger-001", "password": "secret", "setOnCharger": false}'
+```
+
+### 🚨 CRITICAL SECURITY FIX: Cross-Tenant Authorization (January 13, 2026)
+
+**Issue**: IdTokens created for one tenant (e.g., tenant 1) were being accepted on chargers belonging to different tenants (e.g., tenant 4). This was a **critical multi-tenant security vulnerability** that allowed cross-tenant data access.
+
+#### Root Cause
+
+**File**: `01_Data/src/layers/sequelize/repository/Base.ts`
+
+The `tenantId` parameter was passed to all repository methods but **never actually used in database queries**. This meant all queries returned data from **all tenants**, not just the specified tenant.
+
+#### What Was Fixed
+
+All repository methods in `Base.ts` now properly filter by `tenantId`:
+
+| Method                   | Fix Applied                        |
+| ------------------------ | ---------------------------------- |
+| `readByKey()`            | Added `tenantId` to WHERE clause   |
+| `readAllByQuery()`       | Added `tenantId` via helper method |
+| `existsByKey()`          | Added `tenantId` to WHERE clause   |
+| `existByQuery()`         | Added `tenantId` via helper method |
+| `findAndCount()`         | Added `tenantId` via helper method |
+| `_readOrCreateByQuery()` | Added `tenantId` via helper method |
+| `_updateByKey()`         | Added `tenantId` to WHERE clause   |
+| `_updateAllByQuery()`    | Added `tenantId` via helper method |
+| `_deleteByKey()`         | Added `tenantId` to WHERE clause   |
+| `_deleteAllByQuery()`    | Added `tenantId` via helper method |
+
+#### New Helper Method
+
+```typescript
+protected _addTenantIdToQuery(query: object, tenantId: number): object {
+  const queryObj = query as FindOptions<any>;
+  return {
+    ...queryObj,
+    where: {
+      ...queryObj.where,
+      tenantId,
+    },
+  };
+}
+```
+
+#### Security Impact
+
+| Before                                          | After                                           |
+| ----------------------------------------------- | ----------------------------------------------- |
+| IdToken from tenant 1 works on tenant 4 charger | IdToken only works on its own tenant's chargers |
+| Transactions visible across all tenants         | Transactions isolated to their tenant           |
+| Cross-tenant data leakage possible              | Complete multi-tenant data isolation            |
+
+#### Verification
+
+To verify the fix is working:
+
+1. Create an IdToken for tenant 1
+2. Try to use it on a charger belonging to tenant 4
+3. Authorization should be **rejected** (token not found)
 
 ### Quick API Examples
 
