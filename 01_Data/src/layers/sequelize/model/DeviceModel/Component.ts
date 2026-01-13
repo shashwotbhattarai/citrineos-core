@@ -25,6 +25,10 @@ import { EvseType } from './EvseType';
         instance: null,
       },
     },
+    {
+      unique: true,
+      fields: ['name', 'instance', 'tenantId'],
+    },
   ],
 })
 export class Component
@@ -39,13 +43,11 @@ export class Component
 
   @Column({
     type: DataType.STRING,
-    unique: 'name_instance',
   })
   declare name: string;
 
   @Column({
     type: DataType.STRING,
-    unique: 'name_instance',
   })
   declare instance?: string | null;
 

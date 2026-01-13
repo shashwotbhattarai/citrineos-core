@@ -8,25 +8,43 @@ import { QueryInterface } from 'sequelize';
 
 export = {
   up: async (queryInterface: QueryInterface) => {
-    // Fix Components unique constraint to include tenantId for multi-tenant support
-    // The old constraint only had 'name' which prevented multiple tenants from having
-    // the same component (e.g., SecurityCtrlr)
+    // Fix Components unique constraints to include tenantId for multi-tenant support
+    // The old constraints only had 'name' or 'name+instance' which prevented multiple
+    // tenants from having the same component (e.g., SecurityCtrlr)
 
-    // Drop the old unique index on 'name' only
+    // 1. Drop the old unique index on 'name' only (lowercase - PostgreSQL default)
+    await queryInterface.sequelize.query('DROP INDEX IF EXISTS components_name;');
     await queryInterface.sequelize.query('DROP INDEX IF EXISTS "Components_name";');
 
-    // Create new unique index on 'name' and 'tenantId' for proper multi-tenant isolation
+    // 2. Drop the old constraint on 'name' + 'instance' (without tenantId)
+    await queryInterface.sequelize.query(
+      'ALTER TABLE "Components" DROP CONSTRAINT IF EXISTS "Components_name_instance_key";',
+    );
+
+    // 3. Create new unique index on 'name' + 'tenantId' for null instance
     await queryInterface.sequelize.query(
       'CREATE UNIQUE INDEX IF NOT EXISTS "Components_name_tenantId" ON "Components" ("name", "tenantId") WHERE instance IS NULL;',
+    );
+
+    // 4. Create new unique constraint on 'name' + 'instance' + 'tenantId'
+    await queryInterface.sequelize.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "Components_name_instance_tenantId_key" ON "Components" ("name", "instance", "tenantId");',
     );
   },
 
   down: async (queryInterface: QueryInterface) => {
-    // Revert: Drop the new index and recreate the old one
+    // Revert: Drop the new indexes/constraints and recreate the old ones
     await queryInterface.sequelize.query('DROP INDEX IF EXISTS "Components_name_tenantId";');
+    await queryInterface.sequelize.query(
+      'DROP INDEX IF EXISTS "Components_name_instance_tenantId_key";',
+    );
 
     await queryInterface.sequelize.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS "Components_name" ON "Components" ("name") WHERE instance IS NULL;',
+      'CREATE UNIQUE INDEX IF NOT EXISTS components_name ON "Components" ("name") WHERE instance IS NULL;',
+    );
+
+    await queryInterface.sequelize.query(
+      'ALTER TABLE "Components" ADD CONSTRAINT "Components_name_instance_key" UNIQUE ("name", "instance");',
     );
   },
 };
