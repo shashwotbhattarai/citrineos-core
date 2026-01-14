@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 14, 2026
+**Last Updated**: January 15, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -496,6 +496,168 @@ docker compose -f docker-compose.yml down
 docker logs server-citrine-1
 docker logs server-amqp-broker-1
 ```
+
+## 🗄️ **AWS RDS Migration Guide** (Planned)
+
+**Status**: Documented for future implementation
+**Branch**: `db-rds` (documentation added here, implementation pending)
+
+### Current Architecture
+
+Two services connect to the database:
+
+1. **CitrineOS** → via `BOOTSTRAP_CITRINEOS_DATABASE_*` environment variables
+2. **Hasura GraphQL** → via `HASURA_GRAPHQL_DATABASE_URL`
+
+Currently, both connect to the local `ocpp-db` PostgreSQL container defined in docker-compose.yml.
+
+### Migration Steps Overview
+
+#### Step 1: Create AWS RDS Instance
+
+Create a PostgreSQL RDS instance with **PostGIS** support:
+
+- Engine: PostgreSQL 16.x
+- DB name: `citrine`
+- Master username: `citrine`
+- Enable public accessibility (for initial testing) or use VPC
+- Security group: Allow port 5432 from your EC2 instance
+
+After RDS creation, enable PostGIS extension:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+#### Step 2: Modify docker-compose.yml
+
+**Remove or comment out the `ocpp-db` service** and update environment variables:
+
+```yaml
+services:
+  citrine:
+    environment:
+      # === RDS DATABASE CONFIGURATION ===
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: 'your-rds-endpoint.region.rds.amazonaws.com'
+      BOOTSTRAP_CITRINEOS_DATABASE_PORT: '5432'
+      BOOTSTRAP_CITRINEOS_DATABASE_NAME: 'citrine'
+      BOOTSTRAP_CITRINEOS_DATABASE_USERNAME: 'citrine'
+      BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD: 'your-rds-password'
+      BOOTSTRAP_CITRINEOS_DATABASE_MAX_RETRIES: '5'
+      BOOTSTRAP_CITRINEOS_DATABASE_RETRY_DELAY: '5000'
+
+    # Remove dependency on ocpp-db
+    depends_on:
+      amqp-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  graphql-engine:
+    environment:
+      # === RDS DATABASE URL FOR HASURA ===
+      HASURA_GRAPHQL_DATABASE_URL: postgres://citrine:your-rds-password@your-rds-endpoint.region.rds.amazonaws.com:5432/citrine
+
+    depends_on:
+      citrine:
+        condition: service_healthy
+```
+
+#### Step 3: Environment Variables Reference
+
+| Environment Variable                       | Description            | Default     |
+| ------------------------------------------ | ---------------------- | ----------- |
+| `BOOTSTRAP_CITRINEOS_DATABASE_HOST`        | RDS endpoint hostname  | `localhost` |
+| `BOOTSTRAP_CITRINEOS_DATABASE_PORT`        | Database port          | `5432`      |
+| `BOOTSTRAP_CITRINEOS_DATABASE_NAME`        | Database name          | `citrine`   |
+| `BOOTSTRAP_CITRINEOS_DATABASE_USERNAME`    | DB username            | `citrine`   |
+| `BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD`    | DB password            | `citrine`   |
+| `BOOTSTRAP_CITRINEOS_DATABASE_DIALECT`     | DB dialect             | `postgres`  |
+| `BOOTSTRAP_CITRINEOS_DATABASE_SYNC`        | Enable Sequelize sync  | `false`     |
+| `BOOTSTRAP_CITRINEOS_DATABASE_ALTER`       | Enable Sequelize alter | `false`     |
+| `BOOTSTRAP_CITRINEOS_DATABASE_MAX_RETRIES` | Connection retries     | `3`         |
+| `BOOTSTRAP_CITRINEOS_DATABASE_RETRY_DELAY` | Retry delay (ms)       | `1000`      |
+| `BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX`    | Max pool connections   | (optional)  |
+| `BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN`    | Min pool connections   | (optional)  |
+
+#### Step 4: Data Migration Commands
+
+```bash
+# 1. Backup existing data from local PostgreSQL
+docker exec server-ocpp-db-1 pg_dump -U citrine citrine > backup.sql
+
+# 2. Create PostGIS extension on RDS
+psql -h your-rds-endpoint.region.rds.amazonaws.com -U citrine -d citrine \
+  -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+
+# 3. Restore data to RDS
+psql -h your-rds-endpoint.region.rds.amazonaws.com -U citrine -d citrine < backup.sql
+
+# 4. Restart services
+docker compose down
+docker compose up -d
+```
+
+#### Step 5: Verify Connection
+
+```bash
+# Check CitrineOS logs for database connection
+docker logs server-citrine-1 2>&1 | grep -i "database"
+# Should see: "Database connection has been established successfully"
+
+# Test Hasura GraphQL
+curl -s http://localhost:8090/v1/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "query { Tenants { id name } }"}' | jq
+```
+
+### Production Configuration (Recommended)
+
+Use environment variables instead of hardcoding credentials:
+
+```yaml
+services:
+  citrine:
+    environment:
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: '${RDS_HOST}'
+      BOOTSTRAP_CITRINEOS_DATABASE_PORT: '${RDS_PORT:-5432}'
+      BOOTSTRAP_CITRINEOS_DATABASE_NAME: '${RDS_DATABASE:-citrine}'
+      BOOTSTRAP_CITRINEOS_DATABASE_USERNAME: '${RDS_USERNAME}'
+      BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD: '${RDS_PASSWORD}'
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: '20'
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: '5'
+
+  graphql-engine:
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: 'postgres://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/${RDS_DATABASE:-citrine}'
+```
+
+Then create `.env` file or export on EC2:
+
+```bash
+export RDS_HOST="citrine-prod.abc123.us-east-1.rds.amazonaws.com"
+export RDS_USERNAME="citrine"
+export RDS_PASSWORD="secure-password-here"
+export RDS_DATABASE="citrine"
+```
+
+### Security Best Practices
+
+1. **Use AWS Secrets Manager** for passwords instead of hardcoding
+2. **Keep RDS in private subnet** and use VPC security groups
+3. **Enable RDS encryption at rest**
+4. **Use IAM database authentication** for enhanced security
+5. **Set appropriate connection pool sizes** for production load
+6. **Enable automated backups** on RDS
+
+### Key Files Reference
+
+- **Database connection**: `01_Data/src/layers/sequelize/util.ts`
+- **Bootstrap config schema**: `00_Base/src/config/bootstrap.config.ts`
+- **Docker compose**: `Server/docker-compose.yml`
+- **Environment config**: `Server/src/config/envs/docker.ts`
+
+---
 
 ## 🏗️ **System Architecture Overview**
 
