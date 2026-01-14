@@ -188,6 +188,172 @@ curl -X POST "http://server:8080/data/configuration/password?tenantId=2" \
   -d '{"stationId": "charger-001", "password": "secret", "setOnCharger": false}'
 ```
 
+### 🔧 Tariff-Connector Relationship (CRITICAL for Billing)
+
+**Issue Discovered**: January 14, 2026
+
+Transactions are created without `tariffId` because tariffs are not properly linked to connectors.
+
+#### Data Model Relationship
+
+```
+Tenant
+  └── Location
+        └── ChargingStation (stationId: string)
+              └── Connector (id: int, connectorId: int, stationId: string)
+                    └── Tariff (connectorId: int → Connector.id)
+```
+
+**Key Distinction**:
+
+- `Connector.connectorId` = OCPP connector number (1, 2, etc.) - what the charger sends
+- `Connector.id` = Database primary key (auto-increment) - what Tariff references
+
+#### How Transaction Creation Looks Up Tariffs
+
+**File**: `01_Data/src/layers/sequelize/repository/TransactionEvent.ts`
+
+**OCPP 1.6** (`createTransactionByStartTransaction`, line 655-692):
+
+```typescript
+// 1. Find connector by OCPP connectorId and stationId
+const connector = await this.connector.readOnlyOneByQuery(tenantId, {
+  where: {
+    connectorId: request.connectorId, // OCPP connector number (e.g., 1)
+    stationId,
+  },
+  include: [Tariff], // Sequelize joins via Tariff.connectorId = Connector.id
+});
+
+// 2. Get tariff from the relationship
+tariffId: connector.tariffs?.[0]?.id; // Returns undefined if no tariff linked!
+```
+
+**OCPP 2.0.1** (`createOrUpdateTransactionByTransactionEventAndStationId`, line 239-249):
+
+```typescript
+const [connector] = await this.connector.readOrCreateByQuery(tenantId, {
+  where: { tenantId, stationId, evseId: evse.id, evseTypeConnectorId: value.evse.connectorId },
+  include: [Tariff],
+});
+newTransaction.tariffId = connector.tariffs?.[0]?.id;
+```
+
+#### Why Tariffs Are Missing on Transactions
+
+If a Tariff has `connectorId: null`, the Sequelize `HasMany` relationship returns an empty array, so `connector.tariffs?.[0]?.id` is `undefined`.
+
+**Example of BROKEN state**:
+
+```
+Tariff: { id: 6, stationId: "Anari001", connectorId: null }  ❌
+Connector: { id: 6, connectorId: 1, stationId: "Anari001" }
+Transaction created → tariffId: null (relationship not found)
+```
+
+**Example of WORKING state**:
+
+```
+Tariff: { id: 6, stationId: "Anari001", connectorId: 6 }  ✅
+Connector: { id: 6, connectorId: 1, stationId: "Anari001" }
+Transaction created → tariffId: 6 (relationship found!)
+```
+
+#### Required Flow for Midlayer (Yatri Energy Backend)
+
+When onboarding a new tenant/station, the midlayer MUST create entities in this order:
+
+```
+1. Create Tenant (if new)
+   └── Returns: tenantId
+
+2. Create Location
+   └── Input: tenantId, name, address
+   └── Returns: locationId
+
+3. Create ChargingStation
+   └── Input: tenantId, locationId, stationId
+   └── Returns: stationId
+
+4. Create Connector(s) for each physical connector
+   └── Input: tenantId, stationId, connectorId (OCPP number: 1, 2, etc.)
+   └── Returns: Connector.id (database ID, e.g., 6)
+
+5. Create Tariff WITH connectorId
+   └── Input: tenantId, stationId, connectorId (DATABASE ID from step 4!), pricePerKwh, etc.
+   └── Returns: tariffId
+```
+
+#### GraphQL Example for Correct Tariff Creation
+
+```graphql
+# Step 1: Create Connector (or get existing)
+mutation {
+  insert_Connectors_one(
+    object: {
+      tenantId: 4
+      stationId: "Anari001"
+      connectorId: 1 # OCPP connector number
+    }
+  ) {
+    id # Returns database ID, e.g., 6
+    connectorId
+    stationId
+  }
+}
+
+# Step 2: Create Tariff with connectorId pointing to Connector.id
+mutation {
+  insert_Tariffs_one(
+    object: {
+      tenantId: 4
+      stationId: "Anari001"
+      connectorId: 6 # DATABASE ID from step 1, NOT the OCPP connector number!
+      currency: "NPR"
+      pricePerKwh: 50
+      pricePerMin: 1
+      pricePerSession: 10
+      taxRate: 0.13
+    }
+  ) {
+    id
+    stationId
+    connectorId
+  }
+}
+```
+
+#### Verification Query
+
+Check if tariffs are properly linked:
+
+```graphql
+query {
+  Tariffs {
+    id
+    stationId
+    connectorId # Should NOT be null
+    pricePerKwh
+  }
+  Connectors {
+    id # This is what Tariff.connectorId should reference
+    connectorId # This is the OCPP connector number
+    stationId
+  }
+}
+```
+
+#### Summary
+
+| Field                   | What It Is                            | Used For                                  |
+| ----------------------- | ------------------------------------- | ----------------------------------------- |
+| `Connector.id`          | Database primary key (auto-increment) | Foreign key in `Tariff.connectorId`       |
+| `Connector.connectorId` | OCPP connector number (1, 2, etc.)    | Matching incoming OCPP messages           |
+| `Tariff.connectorId`    | Foreign key to `Connector.id`         | Sequelize relationship lookup             |
+| `Tariff.stationId`      | Station identifier (string)           | Informational/legacy, NOT used for lookup |
+
+**Bottom Line**: When creating a Tariff, always set `connectorId` to the **database ID** of the Connector, not the OCPP connector number.
+
 ### 🚨 CRITICAL SECURITY FIX: Cross-Tenant Authorization (January 13, 2026)
 
 **Issue**: IdTokens created for one tenant (e.g., tenant 1) were being accepted on chargers belonging to different tenants (e.g., tenant 4). This was a **critical multi-tenant security vulnerability** that allowed cross-tenant data access.
