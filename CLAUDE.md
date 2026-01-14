@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 13, 2026
+**Last Updated**: January 14, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -583,7 +583,74 @@ Content-Type: application/json
 - **GOING_TO_PRODUCTION.md** - Original implementation guide
 - **GOING_TO_PRODUCTION_V2.md** - **UPDATED** - Advanced implementation guide with OCPP compatibility
 
-## Latest Session Progress & Context (August 22, 2025)
+## Latest Session Progress & Context (January 14, 2026)
+
+### ✅ Multi-Tenant Authorization Testing Completed
+
+Successfully tested multi-tenancy and authorization isolation with Anari chargers on **tenant 4**.
+
+**Key Achievements:**
+
+1. **Multi-Tenant Authorization Verified**
+
+   - IdTokens created for tenant 4 correctly authorize on tenant 4 chargers
+   - Cross-tenant authorization properly rejected (tokens from tenant 1 don't work on tenant 4)
+   - Wallet balance integration working with Yatri Energy API
+
+2. **Anari Charger Integration (Tenant 4)**
+   - Charger `Anari001` connected and operational
+   - RFID token `51216751` successfully authorized
+   - StartTransaction completed with `transactionId: 3`
+   - Wallet balance check passed (balance: 49997, minimum: 100)
+
+### 📋 Documented: "Call Already in Progress" Issue
+
+**Issue:** Anari chargers send multiple CALL messages simultaneously without waiting for responses.
+
+**Root Cause Analysis:**
+
+- Multi-connector chargers send `StatusNotification` for all connectors when status changes
+- While `StartTransaction` is being processed (~600ms due to wallet API call), `StatusNotification` messages are rejected
+- OCPP spec uses "SHOULD NOT" (recommendation), not "MUST NOT" (requirement)
+
+**Typical Error Pattern:**
+
+```
+StartTransaction received → Wallet API call (~600ms)
+                         ↓
+StatusNotification (connector 2: Unavailable) → REJECTED
+StatusNotification (connector 1: Charging) → REJECTED
+                         ↓
+Wallet check completes → StartTransaction response sent
+```
+
+**Impact:** Low severity - StatusNotification failures don't affect charging operations. Charger sends fresh status on next change.
+
+**Documentation Updated:** `OCPP_TROUBLESHOOTING_GUIDE.md` - Issue 3 expanded with:
+
+- Detailed root cause analysis
+- OCPP spec reference (Section 4.1.1 Synchronicity)
+- Proposed fix (allow concurrent informational actions)
+- Code location and implementation details
+- Current workarounds
+
+**Future Fix (Deferred):** Create branch to implement concurrent processing for informational actions (`StatusNotification`, `Heartbeat`, `MeterValues`) using message-specific cache keys.
+
+### 🔧 Technical Details
+
+**Files Updated:**
+
+- `OCPP_TROUBLESHOOTING_GUIDE.md` - Comprehensive documentation of concurrent call issue
+
+**Charger Behavior Confirmed:**
+
+- Anari chargers send `StartTransaction` + multiple `StatusNotification` simultaneously
+- This is common on multi-connector chargers
+- Workaround: Contact Anari to serialize OCPP messages in firmware
+
+---
+
+## Previous Session Progress & Context (August 22, 2025)
 
 ### ✅ Advanced Concepts Deep Dive Completed
 
