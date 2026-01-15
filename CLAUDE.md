@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 14, 2026
+**Last Updated**: January 15, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -151,6 +151,58 @@ Added `tenantId` to all unique constraints to enable proper multi-tenant isolati
 
 - `setOnCharger: false` → Only updates database (no OCPP message)
 - `setOnCharger: true` → Updates database AND sends OCPP message to charger
+
+### 🔧 IdToken Case Normalization Fix (January 15, 2026)
+
+**Issue**: Different chargers send RFID tokens in different cases (e.g., `D6A3FA03` vs `d6a3fa03`). CitrineOS was treating them as different tokens, causing authorization failures.
+
+#### Root Cause
+
+Chargers from different manufacturers encode idTokens differently:
+
+- Charger A sends: `D6A3FA03` (uppercase)
+- Charger B sends: `d6a3fa03` (lowercase)
+
+Database lookups were case-sensitive, so tokens stored as lowercase wouldn't match uppercase requests.
+
+#### Solution
+
+Normalize all idTokens to **lowercase** at entry points (handlers/APIs) before any processing. This ensures consistent lookups throughout the system.
+
+#### Files Changed
+
+| File                                                 | Handler/API                 | Change                                                                              |
+| ---------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
+| `03_Modules/EVDriver/src/module/module.ts`           | OCPP 1.6 Authorize          | `request.idTag = request.idTag.toLowerCase()`                                       |
+| `03_Modules/EVDriver/src/module/module.ts`           | OCPP 2.0.1 Authorize        | `request.idToken.idToken = request.idToken.idToken.toLowerCase()`                   |
+| `03_Modules/Transactions/src/module/module.ts`       | OCPP 1.6 StartTransaction   | `request.idTag = request.idTag.toLowerCase()`                                       |
+| `03_Modules/Transactions/src/module/module.ts`       | OCPP 1.6 StopTransaction    | `request.idTag = request.idTag.toLowerCase()`                                       |
+| `03_Modules/Transactions/src/module/module.ts`       | OCPP 2.0.1 TransactionEvent | `transactionEvent.idToken.idToken = transactionEvent.idToken.idToken.toLowerCase()` |
+| `03_Modules/EVDriver/src/module/1.6/MessageApi.ts`   | RemoteStartTransaction API  | `request.idTag = request.idTag.toLowerCase()`                                       |
+| `03_Modules/EVDriver/src/module/2.0.1/MessageApi.ts` | RequestStartTransaction API | `request.idToken.idToken = request.idToken.idToken.toLowerCase()`                   |
+| `02_Util/src/yatri/YatriEnergyClient.ts`             | Wallet API calls            | `idToken.toLowerCase()` in API URLs and payloads                                    |
+
+#### Flow After Fix
+
+```
+Charger sends: D6A3FA03 or d6a3fa03
+       ↓
+Handler normalizes to: d6a3fa03
+       ↓
+All DB lookups use: d6a3fa03
+       ↓
+Wallet API calls use: d6a3fa03
+       ↓
+Transaction created with correct authorizationId ✅
+```
+
+#### Important Notes
+
+- **Database Storage**: Store idTokens in lowercase in the database for consistency
+- **New Tokens**: When creating new Authorization records via GraphQL/API, use lowercase idTokens
+- **Existing Data**: If you have uppercase tokens in the database, either:
+  - Update them to lowercase: `UPDATE "Authorizations" SET "idToken" = LOWER("idToken")`
+  - Or the system will still work since incoming tokens are normalized
 
 ### 🔧 WebSocket Tenant Routing (Important Note)
 
