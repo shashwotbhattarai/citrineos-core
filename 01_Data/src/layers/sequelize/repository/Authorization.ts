@@ -7,6 +7,7 @@ import { type AuthorizationQuerystring, type IAuthorizationRepository } from '..
 import { Authorization } from '../model/Authorization';
 import { SequelizeRepository } from './Base';
 import { Sequelize } from 'sequelize-typescript';
+import { fn, where, col } from 'sequelize';
 import { ILogObj, Logger } from 'tslog';
 
 export class SequelizeAuthorizationRepository
@@ -38,29 +39,22 @@ export class SequelizeAuthorizationRepository
   private _constructQuery(queryParams: AuthorizationQuerystring): object {
     // 1.6 doesn't have the concept of token type. But we need to support token type for 2.0.1 messages.
     // We ignore token type if it's explicitly set to null, as it's coming from a 1.6 message
-    const idTokenWhere: any = {};
+
+    const whereClause: any = {};
+
     if (queryParams.idToken) {
-      // exact match
-      idTokenWhere.idToken = queryParams.idToken;
-      // or partial match:
-      // idTokenWhere.idToken = { [Op.like]: `%${queryParams.idToken}%` };
+      // Case-insensitive exact match using LOWER function
+      // This handles chargers that send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+      whereClause.idToken = where(fn('LOWER', col('idToken')), queryParams.idToken.toLowerCase());
     }
 
     // only include type if it's provided
     if (queryParams.type) {
-      idTokenWhere.type = queryParams.type;
-    }
-
-    const where: any = {};
-    if (queryParams.idToken) {
-      where.idToken = queryParams.idToken;
-    }
-    if (queryParams.type) {
-      where.idTokenType = queryParams.type;
+      whereClause.idTokenType = queryParams.type;
     }
 
     return {
-      where,
+      where: whereClause,
     };
   }
 }
