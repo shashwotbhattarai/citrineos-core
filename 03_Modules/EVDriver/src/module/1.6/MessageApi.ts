@@ -44,6 +44,12 @@ export class EVDriverOcpp16Api
     callbackUrl?: string,
     tenantId: number = DEFAULT_TENANT_ID,
   ): Promise<IMessageConfirmation[]> {
+    // Normalize idTag to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idTag) {
+      request.idTag = request.idTag.toLowerCase();
+    }
+
     // Check wallet balance for remote start transactions (Yatri Energy Integration)
     if (request.idTag) {
       const walletCheckPassed = await this._checkYatriWalletBalance(request.idTag, tenantId);

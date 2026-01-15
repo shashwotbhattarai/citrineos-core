@@ -280,6 +280,13 @@ export class TransactionsModule extends AbstractModule {
 
     const transactionEvent = message.payload;
     const transactionId = transactionEvent.transactionInfo.transactionId;
+
+    // Normalize idToken to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (transactionEvent.idToken?.idToken) {
+      transactionEvent.idToken.idToken = transactionEvent.idToken.idToken.toLowerCase();
+    }
+
     let response: OCPP2_0_1.TransactionEventResponse | undefined = undefined;
 
     if (transactionEvent.idToken) {
@@ -591,6 +598,12 @@ export class TransactionsModule extends AbstractModule {
     const stationId = message.context.stationId;
     const request = message.payload;
 
+    // Normalize idTag to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idTag) {
+      request.idTag = request.idTag.toLowerCase();
+    }
+
     // Authorize
     const response = await this._transactionService.authorizeOcpp16IdToken(
       message.context,
@@ -641,6 +654,12 @@ export class TransactionsModule extends AbstractModule {
     const tenantId = message.context.tenantId;
     const stationId = message.context.stationId;
     const request = message.payload;
+
+    // Normalize idTag to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idTag) {
+      request.idTag = request.idTag.toLowerCase();
+    }
 
     const authorization: Authorization | undefined = request.idTag
       ? await this._authorizeRepository.readOnlyOneByQuerystring(tenantId, {

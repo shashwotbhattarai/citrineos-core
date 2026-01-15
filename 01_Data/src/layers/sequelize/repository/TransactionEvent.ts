@@ -23,7 +23,7 @@ import {
 } from '../model/TransactionEvent';
 import { SequelizeRepository } from './Base';
 import { EvseType } from '../model/DeviceModel';
-import { Op, WhereOptions, fn, where, col } from 'sequelize';
+import { Op, WhereOptions } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { ILogObj, Logger } from 'tslog';
 import { MeterValueMapper } from '../mapper/2.0.1';
@@ -666,11 +666,10 @@ export class SequelizeTransactionEventRepository
       }
       event.connectorDatabaseId = connector.id;
 
-      // Find Authorization by IdToken (case-insensitive)
-      // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+      // Find Authorization by IdToken
       const authorization = await this.authorization.readOnlyOneByQuery(tenantId, {
         where: {
-          idToken: where(fn('LOWER', col('idToken')), request.idTag.toLowerCase()),
+          idToken: request.idTag,
         },
         transaction: sequelizeTransaction,
       });
