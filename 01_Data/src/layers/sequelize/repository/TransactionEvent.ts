@@ -669,7 +669,9 @@ export class SequelizeTransactionEventRepository
       // Find Authorization by IdToken (case-insensitive)
       // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
       const authorization = await this.authorization.readOnlyOneByQuery(tenantId, {
-        where: where(fn('LOWER', col('idToken')), request.idTag.toLowerCase()),
+        where: {
+          idToken: where(fn('LOWER', col('idToken')), request.idTag.toLowerCase()),
+        },
         transaction: sequelizeTransaction,
       });
       if (!authorization) {
