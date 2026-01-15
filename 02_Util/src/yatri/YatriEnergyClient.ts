@@ -56,7 +56,10 @@ export class YatriEnergyClient {
    */
   async getWalletBalance(idToken: string): Promise<WalletBalance | null> {
     try {
-      const url = `${this._baseUrl}/wallet/idToken/${encodeURIComponent(idToken)}`;
+      // Convert idToken to lowercase for consistent API calls
+      // Different chargers may send tokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+      const normalizedIdToken = idToken.toLowerCase();
+      const url = `${this._baseUrl}/wallet/idToken/${encodeURIComponent(normalizedIdToken)}`;
 
       this._logger.debug(`Fetching wallet balance for idToken: ${idToken}`, { url });
 
@@ -136,15 +139,19 @@ export class YatriEnergyClient {
     try {
       const url = `${this._baseUrl}/wallet/make-payment`;
 
+      // Convert idToken to lowercase for consistent API calls
+      // Different chargers may send tokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+      const normalizedIdToken = paymentRequest.idToken.toLowerCase();
+
       // Transform payload to match Yatri backend API schema
       const yatriPayload = {
         platform: 'ENERGY',
         transactionType: 'DEBIT',
-        idToken: paymentRequest.idToken,
+        idToken: normalizedIdToken,
         transactionAmount: paymentRequest.amount,
         currency: paymentRequest.currency,
         remarks: paymentRequest.description,
-        initiatedBy: paymentRequest.idToken,
+        initiatedBy: normalizedIdToken,
         serviceCharge: 0,
         discount: 0,
         taxRate: 0,
