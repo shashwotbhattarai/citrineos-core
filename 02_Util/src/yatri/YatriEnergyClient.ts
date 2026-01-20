@@ -187,7 +187,7 @@ export class YatriEnergyClient {
       const responseData = await response.json();
 
       const paymentResponse: PaymentResponse = {
-        status: responseData.data.status,
+        status: responseData.data.data.status,
         message: responseData.message,
         yatriWalletTransactionId: responseData.data.data?.id,
         yatriWalletId: responseData.data.data?.walletId,

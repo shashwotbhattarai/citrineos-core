@@ -831,6 +831,7 @@ export class TransactionsModule extends AbstractModule {
 
       if (paymentResponse?.status === 'COMPLETED') {
         this._logger.info(`Payment settlement completed successfully`, {
+          status: paymentResponse?.status,
           transactionId: transaction.transactionId,
           idToken,
           amount: paymentResponse.amount,
@@ -839,6 +840,7 @@ export class TransactionsModule extends AbstractModule {
         });
       } else {
         this._logger.error(`Payment settlement failed`, {
+          status: paymentResponse?.status,
           transactionId: transaction.transactionId,
           idToken,
           totalamount: totalCostAmount,
