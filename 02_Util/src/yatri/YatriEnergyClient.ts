@@ -76,12 +76,12 @@ export class YatriEnergyClient {
 
       // Transform response to match our interface
       const walletBalance: WalletBalance = {
-        idToken: data.idToken || idToken,
-        balance: parseFloat(data.balance) || 0,
-        currency: data.currency || 'NPR',
-        status: data.status || 'INACTIVE',
-        minimumBalance: parseFloat(data.minimumBalance) || 0,
-        lastUpdated: data.lastUpdated || new Date().toISOString(),
+        idToken: data.data?.idToken || idToken,
+        balance: parseFloat(data.data?.balance) || 0,
+        currency: data.data?.currency || 'NPR',
+        status: data.data?.status || 'INACTIVE',
+        minimumBalance: parseFloat(data.data?.minimumBalance) || 0,
+        lastUpdated: data.data?.lastUpdated || new Date().toISOString(),
       };
 
       this._logger.debug(`Wallet balance retrieved successfully`, {
