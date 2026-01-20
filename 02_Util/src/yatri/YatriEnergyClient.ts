@@ -73,6 +73,7 @@ export class YatriEnergyClient {
       }
 
       const data = await response.json();
+      this._logger.debug('respoanse data', data);
 
       // Transform response to match our interface
       const walletBalance: WalletBalance = {
@@ -188,15 +189,15 @@ export class YatriEnergyClient {
       const paymentResponse: PaymentResponse = {
         status: responseData.data.status,
         message: responseData.message,
-        yatriWalletTransactionId: responseData.data.id,
-        yatriWalletId: responseData.data.walletId,
-        yatriWalletOwnerId: responseData.data.ownerId,
-        amount: responseData.data.totalTransactionAmount,
-        currency: responseData.data.currency,
-        newBalance: responseData.data.newBalance,
-        timestamp: responseData.data.createdAt,
-        remarks: responseData.data.remarks,
-        additionalData: responseData.data.additionalData,
+        yatriWalletTransactionId: responseData.data.data?.id,
+        yatriWalletId: responseData.data.data?.walletId,
+        yatriWalletOwnerId: responseData.data.data?.ownerId,
+        amount: responseData.data.data?.totalTransactionAmount,
+        currency: responseData.data.data?.currency,
+        newBalance: responseData.data.data?.newBalance,
+        timestamp: responseData.data.data?.createdAt,
+        remarks: responseData.data.data?.remarks,
+        additionalData: responseData.data.data?.additionalData,
       };
 
       this._logger.info(`Payment processed successfully`, paymentResponse);
