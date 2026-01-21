@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 15, 2026
+**Last Updated**: January 21, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -953,6 +953,156 @@ docker compose -f docker-compose-s3.yml --env-file .env.s3 up -d
 4. **Enable S3 encryption** (SSE-S3 or SSE-KMS)
 5. **Restrict bucket access** with bucket policies
 6. **Use VPC endpoints** for S3 access in production
+
+---
+
+## 🚀 **CI/CD Pipeline & Auto-Deployment** (Implemented ✅)
+
+**Status**: ✅ Fully implemented and tested (January 21, 2026)
+**Files Created**:
+
+- `.github/workflows/yatri-energy-citrine-cicd.yml` - GitHub Actions workflow
+- `Server/docker-compose-ec2.yml` - EC2 production stack with Watchtower
+- `Server/.env.ec2.example` - Environment template for EC2
+
+### Architecture Overview
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Developer     │────▶│   GitHub        │────▶│   Docker Hub    │
+│   Push to cicd  │     │   Actions       │     │   (Private)     │
+└─────────────────┘     └─────────────────┘     └────────┬────────┘
+                                                         │
+                                                         ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   CitrineOS     │◀────│   Watchtower    │◀────│   Poll every    │
+│   Restarts      │     │   Auto-Deploy   │     │   5 minutes     │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+### How It Works
+
+1. **Push to `cicd` branch** → Triggers GitHub Actions workflow
+2. **GitHub Actions** → Builds Docker image and pushes to Docker Hub
+3. **Image Tag** → `{DOCKERHUB_USERNAME}/yatri-energy-citrine:cicd`
+4. **Watchtower on EC2** → Polls Docker Hub every 5 minutes
+5. **Auto-Deploy** → Pulls new image and restarts citrine container
+
+### GitHub Secrets Required
+
+Add these in GitHub repo → Settings → Secrets → Actions:
+
+| Secret               | Description                            |
+| -------------------- | -------------------------------------- |
+| `DOCKERHUB_USERNAME` | Your Docker Hub username               |
+| `DOCKERHUB_TOKEN`    | Docker Hub access token (not password) |
+
+### Workflow Triggers
+
+| Trigger                      | Action                         |
+| ---------------------------- | ------------------------------ |
+| Push to `cicd` branch        | Build and push image           |
+| Manual (`workflow_dispatch`) | Build and push image on demand |
+
+### EC2 Deployment Setup
+
+#### 1. Login to Docker Hub (for private image access)
+
+```bash
+docker login -u YOUR_DOCKERHUB_USERNAME
+# Enter your Docker Hub access token when prompted
+```
+
+#### 2. Configure Environment
+
+```bash
+cd /path/to/citrineos-core/Server
+cp .env.ec2.example .env.ec2
+nano .env.ec2  # Fill in your values
+```
+
+#### 3. Start the Stack
+
+```bash
+docker compose -f docker-compose-ec2.yml --env-file .env.ec2 up -d
+```
+
+#### 4. Verify Deployment
+
+```bash
+# Check all services
+docker compose -f docker-compose-ec2.yml --env-file .env.ec2 ps
+
+# Check Watchtower logs
+docker logs $(docker ps -qf "ancestor=containrrr/watchtower") -f
+
+# Check CitrineOS logs
+docker logs $(docker ps -qf "name=citrine") -f
+```
+
+### Environment Variables Reference
+
+| Variable                      | Description                          | Required |
+| ----------------------------- | ------------------------------------ | -------- |
+| `DOCKERHUB_USERNAME`          | Docker Hub username for image pull   | ✅ Yes   |
+| `RDS_HOST`                    | AWS RDS endpoint                     | ✅ Yes   |
+| `RDS_USERNAME`                | Database username                    | ✅ Yes   |
+| `RDS_PASSWORD`                | Database password                    | ✅ Yes   |
+| `RDS_DATABASE`                | Database name                        | ✅ Yes   |
+| `AWS_REGION`                  | AWS region for S3                    | ✅ Yes   |
+| `S3_BUCKET_NAME`              | S3 bucket for config                 | ✅ Yes   |
+| `AWS_ACCESS_KEY_ID`           | AWS access key                       | ✅ Yes   |
+| `AWS_SECRET_ACCESS_KEY`       | AWS secret key                       | ✅ Yes   |
+| `YATRI_ENERGY_BASE_URL`       | Yatri Energy API URL                 | ✅ Yes   |
+| `YATRI_ENERGY_API_KEY`        | Yatri Energy API key                 | ✅ Yes   |
+| `WATCHTOWER_NOTIFICATION_URL` | Notification webhook (Slack/Discord) | No       |
+
+### Watchtower Configuration
+
+Watchtower is configured to:
+
+- **Poll interval**: Every 5 minutes (300 seconds)
+- **Label-based**: Only updates containers with `com.centurylinklabs.watchtower.enable=true`
+- **Cleanup**: Removes old images after update
+- **Rolling restart**: Graceful container restart
+
+### Manual Trigger
+
+To manually trigger a build without pushing code:
+
+1. Go to GitHub repo → Actions → "Yatri Energy CitrineOS CI/CD"
+2. Click "Run workflow" → Select `cicd` branch → "Run workflow"
+
+### Troubleshooting
+
+#### Image not pulling on EC2
+
+```bash
+# Check Docker Hub login
+docker login
+
+# Manually pull the image
+docker pull YOUR_USERNAME/yatri-energy-citrine:cicd
+```
+
+#### Watchtower not updating
+
+```bash
+# Check Watchtower logs
+docker logs $(docker ps -qf "ancestor=containrrr/watchtower")
+
+# Force Watchtower to check now
+docker exec $(docker ps -qf "ancestor=containrrr/watchtower") /watchtower --run-once
+```
+
+### Key Files Reference
+
+| File                                              | Purpose                              |
+| ------------------------------------------------- | ------------------------------------ |
+| `.github/workflows/yatri-energy-citrine-cicd.yml` | GitHub Actions CI/CD workflow        |
+| `Server/docker-compose-ec2.yml`                   | EC2 production stack with Watchtower |
+| `Server/.env.ec2.example`                         | Environment template                 |
+| `Server/deploy.Dockerfile`                        | Docker build file                    |
 
 ---
 
