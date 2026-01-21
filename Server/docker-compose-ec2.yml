@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: 2025 Yatri Motorcycles
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Docker Compose for EC2 Production Deployment with Watchtower Auto-Update
+#
+# Usage:
+#   1. Copy .env.s3.example to .env.ec2 and fill in your credentials
+#   2. Add Docker Hub credentials for private image access
+#   3. Run: docker compose -f docker-compose-ec2.yml --env-file .env.ec2 up -d
+#
+# Prerequisites:
+#   - AWS RDS PostgreSQL instance with PostGIS extension
+#   - AWS S3 bucket for config storage
+#   - Docker Hub account with access to private yatri-energy-citrine image
+#
+# Watchtower will automatically pull and deploy new images tagged :cicd
+
+services:
+  amqp-broker:
+    image: rabbitmq:3-management
+    ports:
+      - 15672:15672
+      - 5672:5672
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_port_connectivity
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  citrine:
+    image: ${DOCKERHUB_USERNAME}/yatri-energy-citrine:cicd
+    environment:
+      APP_NAME: 'all'
+      APP_ENV: 'docker'
+      DB_STRATEGY: 'migrate'
+      # === AWS RDS DATABASE CONFIGURATION ===
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: ${RDS_HOST}
+      BOOTSTRAP_CITRINEOS_DATABASE_PORT: ${RDS_PORT:-5432}
+      BOOTSTRAP_CITRINEOS_DATABASE_NAME: ${RDS_DATABASE:-citrine}
+      BOOTSTRAP_CITRINEOS_DATABASE_USERNAME: ${RDS_USERNAME}
+      BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD: ${RDS_PASSWORD}
+      BOOTSTRAP_CITRINEOS_DATABASE_DIALECT: 'postgres'
+      BOOTSTRAP_CITRINEOS_DATABASE_SSL: ${RDS_SSL:-true}
+      BOOTSTRAP_CITRINEOS_DATABASE_SYNC: 'false'
+      BOOTSTRAP_CITRINEOS_DATABASE_ALTER: 'false'
+      BOOTSTRAP_CITRINEOS_DATABASE_MAX_RETRIES: ${RDS_MAX_RETRIES:-5}
+      BOOTSTRAP_CITRINEOS_DATABASE_RETRY_DELAY: ${RDS_RETRY_DELAY:-5000}
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: ${RDS_POOL_MAX:-20}
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: ${RDS_POOL_MIN:-5}
+      # Config filename
+      BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: 'config.json'
+      # === AWS S3 FILE STORAGE CONFIGURATION ===
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 's3'
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_REGION: ${AWS_REGION:-ap-south-1}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_DEFAULT_BUCKET_NAME: ${S3_BUCKET_NAME:-citrineos-files}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_FORCE_PATH_STYLE: 'false'
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # AWS Configuration (for SDK)
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # Yatri Energy Integration
+      YATRI_ENERGY_BASE_URL: ${YATRI_ENERGY_BASE_URL:-https://api.dev.yatri-energy.yatrimotorcycle.com}
+      YATRI_ENERGY_API_KEY: ${YATRI_ENERGY_API_KEY:-}
+      YATRI_ENERGY_TIMEOUT: ${YATRI_ENERGY_TIMEOUT:-10000}
+      YATRI_MINIMUM_BALANCE: ${YATRI_MINIMUM_BALANCE:-100.0}
+      YATRI_WALLET_INTEGRATION_ENABLED: ${YATRI_WALLET_INTEGRATION_ENABLED:-true}
+    depends_on:
+      amqp-broker:
+        condition: service_healthy
+    ports:
+      - 8080:8080
+      - 8081:8081
+      - 8082:8082
+      - 8443:8443
+      - 8444:8444
+      - 8092:8092
+      - 8093:8093
+      - 8094:8094
+      - 8095:8095
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "const net = require(\"net\"); const client = net.createConnection(8080, \"127.0.0.1\", () => { client.end(); process.exit(0); }); client.on(\"error\", () => process.exit(1)); client.setTimeout(5000, () => { client.destroy(); process.exit(1); });"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  graphql-engine:
+    image: hasura/graphql-engine:v2.40.3.cli-migrations-v3
+    volumes:
+      - ./hasura-metadata:/hasura-metadata
+    ports:
+      - 8090:8080
+    depends_on:
+      citrine:
+        condition: service_healthy
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/${RDS_DATABASE:-citrine}?sslmode=require
+      HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
+      HASURA_GRAPHQL_DEV_MODE: ${HASURA_DEV_MODE:-false}
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      HASURA_GRAPHQL_ENABLE_TELEMETRY: 'false'
+      HASURA_GRAPHQL_METADATA_DEFAULTS: '{"backend_configs":{"dataconnector":{"athena":{"uri":"http://data-connector-agent:8081/api/v1/athena"},"mariadb":{"uri":"http://data-connector-agent:8081/api/v1/mariadb"},"mysql8":{"uri":"http://data-connector-agent:8081/api/v1/mysql"},"oracle":{"uri":"http://data-connector-agent:8081/api/v1/oracle"},"snowflake":{"uri":"http://data-connector-agent:8081/api/v1/snowflake"}}}}'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://graphql-engine:8080/healthz']
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    environment:
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_POLL_INTERVAL: 300
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_INCLUDE_RESTARTING: 'true'
+      WATCHTOWER_ROLLING_RESTART: 'true'
+      WATCHTOWER_NOTIFICATIONS: 'shoutrrr'
+      WATCHTOWER_NOTIFICATION_URL: ${WATCHTOWER_NOTIFICATION_URL:-}
+    command: --interval 300
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
