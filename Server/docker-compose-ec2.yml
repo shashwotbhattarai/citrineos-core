@@ -128,16 +128,16 @@ services:
     image: containrrr/watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /root/.docker/config.json:/config.json:ro
+      - /root/.docker/config.json:/config.json
     environment:
+      DOCKER_API_VERSION: 1.44
       WATCHTOWER_CLEANUP: 'true'
-      WATCHTOWER_POLL_INTERVAL: 300
+      WATCHTOWER_POLL_INTERVAL: 30
       WATCHTOWER_LABEL_ENABLE: 'true'
       WATCHTOWER_INCLUDE_RESTARTING: 'true'
       WATCHTOWER_ROLLING_RESTART: 'true'
       WATCHTOWER_NOTIFICATIONS: 'shoutrrr'
       WATCHTOWER_NOTIFICATION_URL: ${WATCHTOWER_NOTIFICATION_URL:-}
-    command: --interval 300
     restart: unless-stopped
 
 volumes:
