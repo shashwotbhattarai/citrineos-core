@@ -69,7 +69,7 @@ const registerSwaggerUi = (systemConfig: SystemConfig, server: FastifyInstance) 
       filter: true,
     },
     theme: {
-      title: 'CitrineOS Central System API',
+      title: 'Yatri Energy CitrineOS Central System API',
       css: [
         {
           filename: '',
