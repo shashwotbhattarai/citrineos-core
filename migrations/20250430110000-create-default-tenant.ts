@@ -22,7 +22,6 @@ export = {
           name: 'Yatri Energy',
           createdAt: new Date(),
           updatedAt: new Date(),
-          countryCode: 'NEP',
         },
       ]);
     }
