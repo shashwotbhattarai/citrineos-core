@@ -1,6 +1,6 @@
 # CitrinOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 21, 2026
+**Last Updated**: January 22, 2026
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -2493,6 +2493,64 @@ WARN [CallApi] Charging station not found for tenantId: 1
 - **Migration failures**: Check PostgreSQL container logs
 - **GraphQL errors**: Verify Hasura metadata consistency
 - **Authorization query failures**: Validate 3-table relationship integrity
+
+### **Migration Failures - "Unknown constraint error" (January 2026)**
+
+**Symptoms:**
+
+```
+== 20250430103000-initial: migrating =======
+Executing (default): DO $ BEGIN IF NOT EXISTS ...
+ERROR: Unknown constraint error
+```
+
+**Root Cause:**
+
+The initial migration (`20250430103000-initial.ts`) is a single massive SQL script that creates all tables. The error occurs when:
+
+1. A previous migration run failed partway through
+2. `SequelizeMeta` table doesn't record the migration as complete
+3. Some tables/indexes/constraints already exist from the partial run
+4. `CREATE TABLE IF NOT EXISTS` succeeds but constraint creation fails on duplicates
+
+**Solution - Reset the Database (Recommended):**
+
+Connect to your RDS/PostgreSQL and run:
+
+```sql
+-- Drop all tables and types in the public schema
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO citrine;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+-- Re-create PostGIS extension (required by CitrineOS)
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+Then restart the CitrineOS container:
+
+```bash
+docker restart <container_id>
+```
+
+**Alternative - Check Current State:**
+
+```bash
+# Check which migrations have run
+PGPASSWORD=YOUR_PASSWORD psql -h YOUR_RDS_HOST -U citrine -d YOUR_DATABASE \
+  -c 'SELECT * FROM "SequelizeMeta" ORDER BY name;'
+
+# Check what tables exist
+PGPASSWORD=YOUR_PASSWORD psql -h YOUR_RDS_HOST -U citrine -d YOUR_DATABASE \
+  -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;"
+```
+
+**Prevention:**
+
+- Always let migrations complete fully before stopping containers
+- If migration fails, either fix the issue and retry, or reset the database
+- Don't manually modify schema while migrations are in progress
 
 ### **Performance & Monitoring**
 
