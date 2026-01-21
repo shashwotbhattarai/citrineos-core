@@ -2552,6 +2552,66 @@ PGPASSWORD=YOUR_PASSWORD psql -h YOUR_RDS_HOST -U citrine -d YOUR_DATABASE \
 - If migration fails, either fix the issue and retry, or reset the database
 - Don't manually modify schema while migrations are in progress
 
+### **Migration Order Dependencies - Column Does Not Exist Errors (January 2026)**
+
+**Symptoms:**
+
+```
+ERROR: column "countryCode" of relation "Tenants" does not exist
+```
+
+**Root Cause:**
+
+Migrations run in order by filename timestamp. If you modify an early migration to use a column that's added by a later migration, it will fail.
+
+**Example - Default Tenant countryCode:**
+
+Migration order:
+
+1. `20250430103000-initial.ts` - Creates base tables
+2. `20250430105500-create-tenants-table.ts` - Creates `Tenants` table (no `countryCode` yet)
+3. `20250430110000-create-default-tenant.ts` - Inserts default tenant
+4. `20250714121000-alter-tenants-table-add-ocpi-fields.ts` - Adds `countryCode` column with default value
+
+**Wrong approach** - Adding `countryCode` to `20250430110000`:
+
+```typescript
+// This FAILS because countryCode column doesn't exist yet
+await queryInterface.bulkInsert('Tenants', [
+  {
+    id: 1,
+    name: 'Yatri Energy',
+    countryCode: 'NEP', // ❌ Column added in later migration!
+  },
+]);
+```
+
+**Correct approach** - Modify the migration that adds the column (`20250714121000`):
+
+```typescript
+// Change the default value here instead
+await queryInterface.addColumn('Tenants', 'countryCode', {
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: 'NEP', // ✅ Change default from 'US' to your value
+});
+```
+
+**Key Files:**
+
+- `migrations/20250430110000-create-default-tenant.ts` - Creates default tenant (don't add columns here that don't exist yet)
+- `migrations/20250714121000-alter-tenants-table-add-ocpi-fields.ts` - Adds `countryCode` with default value
+
+**After fixing, reset database and rebuild:**
+
+```sql
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO yatri;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
 ### **Performance & Monitoring**
 
 **Log Management:**
