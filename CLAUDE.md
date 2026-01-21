@@ -754,6 +754,208 @@ dialectOptions: {
 
 ---
 
+## ☁️ **AWS S3 Storage Guide** (Implemented ✅)
+
+**Status**: ✅ Fully implemented and tested (January 21, 2026)
+**Files Created**:
+
+- `Server/docker-compose-s3.yml` - Docker Compose for RDS + S3 (no local PostgreSQL or MinIO)
+- `Server/.env.s3.example` - Template for AWS environment variables
+
+### Architecture Overview
+
+This configuration uses **full AWS services**:
+
+1. **AWS RDS** → PostgreSQL database (same as RDS guide)
+2. **AWS S3** → File storage for configs, certificates, etc. (replaces MinIO)
+3. **RabbitMQ** → Still runs locally in Docker
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   CitrineOS     │────▶│    AWS RDS      │     │    AWS S3       │
+│   (Docker)      │     │   PostgreSQL    │     │   (Files)       │
+└────────┬────────┘     └─────────────────┘     └─────────────────┘
+         │                                              ▲
+         │              ┌─────────────────┐             │
+         └─────────────▶│   RabbitMQ      │             │
+                        │   (Local)       │             │
+                        └─────────────────┘             │
+         └──────────────────────────────────────────────┘
+                        Config Storage
+```
+
+### Quick Start (3 Steps)
+
+```bash
+cd Server
+
+# Step 1: Copy the example environment file
+cp .env.s3.example .env.s3
+
+# Step 2: Edit .env.s3 with your AWS credentials
+# Required: RDS_*, AWS_REGION, S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+# Step 3: Start services with RDS + S3
+docker compose -f docker-compose-s3.yml --env-file .env.s3 up -d
+```
+
+### Prerequisites
+
+#### 1. AWS RDS PostgreSQL Instance
+
+Same as RDS guide - PostgreSQL with PostGIS extension.
+
+#### 2. AWS S3 Bucket
+
+Create an S3 bucket for CitrineOS files:
+
+```bash
+aws s3 mb s3://your-bucket-name --region ap-south-1
+```
+
+Or create via AWS Console. CitrineOS will auto-create the bucket if IAM permissions allow.
+
+#### 3. IAM Permissions
+
+Required S3 permissions for the AWS credentials:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:CreateBucket"],
+      "Resource": ["arn:aws:s3:::your-bucket-name", "arn:aws:s3:::your-bucket-name/*"]
+    }
+  ]
+}
+```
+
+### Environment Variables Reference
+
+| Variable                | Description       | Default           | Required |
+| ----------------------- | ----------------- | ----------------- | -------- |
+| `AWS_REGION`            | AWS region for S3 | `ap-south-1`      | ✅ Yes   |
+| `S3_BUCKET_NAME`        | S3 bucket name    | `citrineos-files` | ✅ Yes   |
+| `AWS_ACCESS_KEY_ID`     | AWS access key    | -                 | ✅ Yes\* |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key    | -                 | ✅ Yes\* |
+
+\*Not required if running on EC2 with IAM role attached.
+
+Plus all RDS variables from the RDS guide.
+
+### Example .env.s3 File
+
+```bash
+# AWS RDS PostgreSQL Configuration
+RDS_HOST=your-db.abc123.ap-south-1.rds.amazonaws.com
+RDS_PORT=5432
+RDS_DATABASE=citrine
+RDS_USERNAME=citrine
+RDS_PASSWORD=your-secure-password
+RDS_SSL=true
+
+# AWS S3 Configuration
+AWS_REGION=ap-south-1
+S3_BUCKET_NAME=your-bucket-name
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=your-secret-key
+
+# Connection Pool
+RDS_POOL_MAX=20
+RDS_POOL_MIN=5
+```
+
+### How S3 Storage Works
+
+**Config Loading Flow:**
+
+```
+.env.s3 → docker-compose-s3.yml → Environment Variables
+       → loadBootstrapConfig() → createConfigStore() → S3Storage → AWS S3
+```
+
+**Key Files:**
+
+- `00_Base/src/config/bootstrap.config.ts` - Reads `BOOTSTRAP_CITRINEOS_FILE_ACCESS_*` env vars
+- `Server/src/config/config.loader.ts` - Creates S3Storage when `type: 's3'`
+- `02_Util/src/files/s3Storage.ts` - S3 client using AWS SDK
+
+**First Boot Behavior:**
+
+1. CitrineOS checks S3 for `config.json`
+2. If not found, loads default from `Server/src/config/envs/docker.ts`
+3. Saves default config to S3
+4. Future boots load config from S3
+
+### Verify S3 Connection
+
+```bash
+# Check container status
+docker compose -f docker-compose-s3.yml --env-file .env.s3 ps
+
+# Check CitrineOS logs for S3
+docker logs server-citrine-1 2>&1 | grep -i s3
+# Should see: "Config saved to S3" or "Configuration loaded from storage"
+
+# List S3 bucket contents
+aws s3 ls s3://your-bucket-name/
+# Should see: config.json
+```
+
+### Switching Between Configurations
+
+```bash
+# Local PostgreSQL + MinIO (development)
+docker compose -f docker-compose.yml up -d
+
+# AWS RDS + MinIO (database only in cloud)
+docker compose -f docker-compose-rds.yml --env-file .env.rds up -d
+
+# AWS RDS + S3 (full cloud)
+docker compose -f docker-compose-s3.yml --env-file .env.s3 up -d
+```
+
+### Troubleshooting
+
+#### Error: "Access Denied" for S3
+
+**Cause**: Invalid AWS credentials or insufficient permissions.
+**Fix**: Verify `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are correct and have S3 permissions.
+
+#### Error: "NoSuchBucket"
+
+**Cause**: S3 bucket doesn't exist and IAM lacks `s3:CreateBucket` permission.
+**Fix**: Create the bucket manually or add `s3:CreateBucket` permission.
+
+#### Config not updating after edit
+
+**Cause**: CitrineOS loads config from S3 on startup, not from `docker.ts`.
+**Fix**: Edit config directly in S3, or delete `config.json` from S3 and restart.
+
+### Key Files Reference
+
+| File                                 | Purpose                                  |
+| ------------------------------------ | ---------------------------------------- |
+| `Server/docker-compose-s3.yml`       | Docker Compose for RDS + S3              |
+| `Server/.env.s3.example`             | Template for AWS environment variables   |
+| `Server/.env.s3`                     | Your actual AWS credentials (gitignored) |
+| `02_Util/src/files/s3Storage.ts`     | S3 storage implementation                |
+| `Server/src/config/config.loader.ts` | Config store factory                     |
+| `Server/src/config/envs/docker.ts`   | Default config (used on first boot)      |
+
+### Security Best Practices
+
+1. **Never commit `.env.s3`** to version control (it's in `.gitignore`)
+2. **Use IAM roles** instead of access keys when running on EC2
+3. **Enable S3 bucket versioning** for config backup
+4. **Enable S3 encryption** (SSE-S3 or SSE-KMS)
+5. **Restrict bucket access** with bucket policies
+6. **Use VPC endpoints** for S3 access in production
+
+---
+
 ## 🏗️ **System Architecture Overview**
 
 CitrineOS follows a modular, layered architecture designed for enterprise-scale EV charging management:
