@@ -56,7 +56,10 @@ export class YatriEnergyClient {
    */
   async getWalletBalance(idToken: string): Promise<WalletBalance | null> {
     try {
-      const url = `${this._baseUrl}/wallet/idToken/${encodeURIComponent(idToken)}`;
+      // Convert idToken to lowercase for consistent API calls
+      // Different chargers may send tokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+      const normalizedIdToken = idToken.toLowerCase();
+      const url = `${this._baseUrl}/wallet/idToken/${encodeURIComponent(normalizedIdToken)}`;
 
       this._logger.debug(`Fetching wallet balance for idToken: ${idToken}`, { url });
 
@@ -70,15 +73,16 @@ export class YatriEnergyClient {
       }
 
       const data = await response.json();
+      this._logger.debug('respoanse data', data);
 
       // Transform response to match our interface
       const walletBalance: WalletBalance = {
-        idToken: data.idToken || idToken,
-        balance: parseFloat(data.balance) || 0,
-        currency: data.currency || 'NPR',
-        status: data.status || 'INACTIVE',
-        minimumBalance: parseFloat(data.minimumBalance) || 0,
-        lastUpdated: data.lastUpdated || new Date().toISOString(),
+        idToken: data.data?.idToken || idToken,
+        balance: parseFloat(data.data?.balance) || 0,
+        currency: data.data?.currency || 'NPR',
+        status: data.data?.status || 'INACTIVE',
+        minimumBalance: parseFloat(data.data?.minimumBalance) || 0,
+        lastUpdated: data.data?.lastUpdated || new Date().toISOString(),
       };
 
       this._logger.debug(`Wallet balance retrieved successfully`, {
@@ -136,15 +140,19 @@ export class YatriEnergyClient {
     try {
       const url = `${this._baseUrl}/wallet/make-payment`;
 
+      // Convert idToken to lowercase for consistent API calls
+      // Different chargers may send tokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+      const normalizedIdToken = paymentRequest.idToken.toLowerCase();
+
       // Transform payload to match Yatri backend API schema
       const yatriPayload = {
         platform: 'ENERGY',
         transactionType: 'DEBIT',
-        idToken: paymentRequest.idToken,
+        idToken: normalizedIdToken,
         transactionAmount: paymentRequest.amount,
         currency: paymentRequest.currency,
         remarks: paymentRequest.description,
-        initiatedBy: paymentRequest.idToken,
+        initiatedBy: normalizedIdToken,
         serviceCharge: 0,
         discount: 0,
         taxRate: 0,
@@ -179,17 +187,17 @@ export class YatriEnergyClient {
       const responseData = await response.json();
 
       const paymentResponse: PaymentResponse = {
-        status: responseData.data.status,
+        status: responseData.data.data.status,
         message: responseData.message,
-        yatriWalletTransactionId: responseData.data.id,
-        yatriWalletId: responseData.data.walletId,
-        yatriWalletOwnerId: responseData.data.ownerId,
-        amount: responseData.data.totalTransactionAmount,
-        currency: responseData.data.currency,
-        newBalance: responseData.data.newBalance,
-        timestamp: responseData.data.createdAt,
-        remarks: responseData.data.remarks,
-        additionalData: responseData.data.additionalData,
+        yatriWalletTransactionId: responseData.data.data?.id,
+        yatriWalletId: responseData.data.data?.walletId,
+        yatriWalletOwnerId: responseData.data.data?.ownerId,
+        amount: responseData.data.data?.totalTransactionAmount,
+        currency: responseData.data.data?.currency,
+        newBalance: responseData.data.data?.newBalance,
+        timestamp: responseData.data.data?.createdAt,
+        remarks: responseData.data.data?.remarks,
+        additionalData: responseData.data.data?.additionalData,
       };
 
       this._logger.info(`Payment processed successfully`, paymentResponse);

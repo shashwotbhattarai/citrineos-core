@@ -260,6 +260,13 @@ export class EVDriverModule extends AbstractModule {
     this._logger.debug('Authorize received:', message, props);
     const request: OCPP2_0_1.AuthorizeRequest = message.payload;
     const context = message.context;
+
+    // Normalize idToken to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idToken?.idToken) {
+      request.idToken.idToken = request.idToken.idToken.toLowerCase();
+    }
+
     const response: OCPP2_0_1.AuthorizeResponse = {
       idTokenInfo: {
         status: OCPP2_0_1.AuthorizationStatusEnumType.Unknown,
@@ -740,6 +747,12 @@ export class EVDriverModule extends AbstractModule {
     this._logger.debug('OCPP 16 Authorize received: ', message, props);
     const request: OCPP1_6.AuthorizeRequest = message.payload;
     const context: IMessageContext = message.context;
+
+    // Normalize idTag to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idTag) {
+      request.idTag = request.idTag.toLowerCase();
+    }
 
     // Default response: Invalid
     const response: OCPP1_6.AuthorizeResponse = {
