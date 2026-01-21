@@ -242,7 +242,7 @@ export class CitrineOSServer {
           port: this.port,
         })
         .then((address) => {
-          this._logger?.info(`Server listening at ${address}`);
+          this._logger?.info(`Server listening at ${address}, cicd test-1`);
         })
         .catch((error) => {
           this._logger?.error(error);

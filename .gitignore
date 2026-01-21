@@ -307,3 +307,5 @@ data
 **/certificates/*.pem.backup
 .env.rds
 .env.s3
+.env.ec2
+
