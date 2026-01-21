@@ -18,6 +18,7 @@ export const bootstrapConfigSchema = z.object({
     dialect: z.string().default('postgres'),
     username: z.string().default('citrine'),
     password: z.string().default('citrine'),
+    ssl: z.boolean().default(false),
     pool: z
       .object({
         max: z.number().int().positive().optional(),
@@ -118,6 +119,7 @@ export function loadBootstrapConfig(): BootstrapConfig {
       dialect: getEnvVarValue('database_dialect'),
       username: getEnvVarValue('database_username'),
       password: getEnvVarValue('database_password'),
+      ssl: getEnvVarValue('database_ssl') && parseEnvValue(getEnvVarValue('database_ssl')!),
       sync: getEnvVarValue('database_sync') && parseEnvValue(getEnvVarValue('database_sync')!),
       alter: getEnvVarValue('database_alter') && parseEnvValue(getEnvVarValue('database_alter')!),
       force: getEnvVarValue('database_force') && parseEnvValue(getEnvVarValue('database_force')!),
