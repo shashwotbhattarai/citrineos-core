@@ -96,11 +96,7 @@ services:
       - 8094:8094
       - 8095:8095
     healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'node -e "const net = require(\"net\"); const client = net.createConnection(8080, \"127.0.0.1\", () => { client.end(); process.exit(0); }); client.on(\"error\", () => process.exit(1)); client.setTimeout(5000, () => { client.destroy(); process.exit(1); });"',
-        ]
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
       interval: 30s
       timeout: 10s
       retries: 5

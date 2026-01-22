@@ -84,6 +84,7 @@ import {
 import { AdminApi, MessageRouterImpl, WebhookDispatcher } from '@citrineos/ocpprouter';
 import cors from '@fastify/cors';
 import ApiAuthPlugin from '@citrineos/util/dist/authorization/ApiAuthPlugin';
+import * as amqplib from 'amqplib';
 
 export class CitrineOSServer {
   /**
@@ -291,7 +292,54 @@ export class CitrineOSServer {
   }
 
   private initHealthCheck() {
-    this._server.get('/health', async () => ({ status: 'healthy' }));
+    this._server.get('/health', async (_request, reply) => {
+      const healthStatus: {
+        status: string;
+        database: string;
+        rabbitmq: string;
+        errors?: string[];
+      } = {
+        status: 'healthy',
+        database: 'unknown',
+        rabbitmq: 'unknown',
+      };
+      const errors: string[] = [];
+
+      // Check database connection
+      try {
+        await sequelize.DefaultSequelizeInstance.getInstance(this._config).authenticate();
+        healthStatus.database = 'connected';
+      } catch (error) {
+        healthStatus.database = 'disconnected';
+        errors.push('Database connection failed');
+        this._logger.error('Health check failed - database connection error:', error);
+      }
+
+      // Check RabbitMQ connection
+      try {
+        const amqpUrl = this._config.util.messageBroker.amqp?.url;
+        if (amqpUrl) {
+          const connection = await amqplib.connect(amqpUrl);
+          await connection.close();
+          healthStatus.rabbitmq = 'connected';
+        } else {
+          healthStatus.rabbitmq = 'not_configured';
+        }
+      } catch (error) {
+        healthStatus.rabbitmq = 'disconnected';
+        errors.push('RabbitMQ connection failed');
+        this._logger.error('Health check failed - RabbitMQ connection error:', error);
+      }
+
+      // Determine overall health status
+      if (errors.length > 0) {
+        healthStatus.status = 'unhealthy';
+        healthStatus.errors = errors;
+        return reply.status(503).send(healthStatus);
+      }
+
+      return healthStatus;
+    });
   }
 
   private initAjv(ajv?: Ajv) {

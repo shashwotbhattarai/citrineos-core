@@ -13,6 +13,10 @@ RUN npm run install-all && npm run build
 # The final stage, which copies built files and prepares the run environment
 # Using a slim image to reduce the final image size
 FROM node:22-slim
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /usr/local/apps/citrineos /usr/local/apps/citrineos
 
 WORKDIR /usr/local/apps/citrineos
