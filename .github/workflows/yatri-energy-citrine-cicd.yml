@@ -11,7 +11,8 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/yatri-energy-citrine
+  CITRINE_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/yatri-energy-citrine
+  HASURA_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/yatri-energy-hasura
 
 jobs:
   build-and-push:
@@ -42,16 +43,25 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push CitrineOS image
         uses: docker/build-push-action@v5
         with:
           context: ./
           file: ./Server/deploy.Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ env.DOCKERHUB_REPO }}:cicd
+          tags: ${{ env.CITRINE_IMAGE }}:cicd
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Build and push Hasura image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Server
+          file: ./Server/hasura.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.HASURA_IMAGE }}:cicd
 
       # Move cache to avoid ever-growing cache
       - name: Move cache
@@ -61,8 +71,9 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Docker Image Pushed Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Images Pushed Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.DOCKERHUB_REPO }}:cicd\`" >> $GITHUB_STEP_SUMMARY
+          echo "**CitrineOS Image:** \`${{ env.CITRINE_IMAGE }}:cicd\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Hasura Image:** \`${{ env.HASURA_IMAGE }}:cicd\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Watchtower will automatically pull and deploy this image on EC2." >> $GITHUB_STEP_SUMMARY
+          echo "Watchtower will automatically pull and deploy these images on EC2." >> $GITHUB_STEP_SUMMARY
