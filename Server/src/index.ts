@@ -85,6 +85,7 @@ import { AdminApi, MessageRouterImpl, WebhookDispatcher } from '@citrineos/ocppr
 import cors from '@fastify/cors';
 import ApiAuthPlugin from '@citrineos/util/dist/authorization/ApiAuthPlugin';
 import * as amqplib from 'amqplib';
+import { HeadBucketCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 export class CitrineOSServer {
   /**
@@ -302,9 +303,13 @@ export class CitrineOSServer {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
+        s3: {
+          type: 'string',
+          enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
+        },
         errors: { type: 'array', items: { type: 'string' } },
       },
-      required: ['status', 'database', 'rabbitmq'],
+      required: ['status', 'database', 'rabbitmq', 's3'],
     };
 
     const config = this._config;
@@ -316,7 +321,7 @@ export class CitrineOSServer {
         {
           schema: {
             description:
-              'Health check endpoint for infrastructure monitoring (Database + RabbitMQ)',
+              'Health check endpoint for infrastructure monitoring (Database + RabbitMQ + S3)',
             tags: ['System'],
             response: {
               200: {
@@ -335,11 +340,13 @@ export class CitrineOSServer {
             status: string;
             database: string;
             rabbitmq: string;
+            s3: string;
             errors?: string[];
           } = {
             status: 'healthy',
             database: 'unknown',
             rabbitmq: 'unknown',
+            s3: 'unknown',
           };
           const errors: string[] = [];
 
@@ -365,6 +372,44 @@ export class CitrineOSServer {
           } catch (error) {
             healthStatus.rabbitmq = 'disconnected';
             errors.push('RabbitMQ connection failed');
+          }
+
+          // Check S3 connection (bucket exists + config file exists)
+          try {
+            const s3Config = config.fileAccess.s3;
+            if (config.fileAccess.type === 's3' && s3Config) {
+              const s3Client = new S3Client({
+                ...(s3Config.endpoint ? { endpoint: s3Config.endpoint } : {}),
+                ...(s3Config.region ? { region: s3Config.region } : {}),
+                forcePathStyle: !!s3Config.s3ForcePathStyle,
+                ...(s3Config.accessKeyId && s3Config.secretAccessKey
+                  ? {
+                      credentials: {
+                        accessKeyId: s3Config.accessKeyId,
+                        secretAccessKey: s3Config.secretAccessKey,
+                      },
+                    }
+                  : {}),
+              });
+
+              const bucketName = config.configDir || s3Config.defaultBucketName;
+              const configFileName = config.configFileName || 'config.json';
+
+              // Check bucket exists
+              await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
+
+              // Check config file exists
+              await s3Client.send(
+                new HeadObjectCommand({ Bucket: bucketName, Key: configFileName }),
+              );
+
+              healthStatus.s3 = 'connected';
+            } else {
+              healthStatus.s3 = 'not_configured';
+            }
+          } catch (error) {
+            healthStatus.s3 = 'disconnected';
+            errors.push('S3 connection failed');
           }
 
           // Determine overall health status
