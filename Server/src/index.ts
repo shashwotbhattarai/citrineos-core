@@ -148,8 +148,6 @@ export class CitrineOSServer {
     });
 
     console.log('Bootstrap configuration loaded');
-    // Add health check
-    this.initHealthCheck();
 
     // Create Ajv JSON schema validator instance
     this._ajv = this.initAjv(ajv);
@@ -165,6 +163,9 @@ export class CitrineOSServer {
     this.initSwagger()
       .then()
       .catch((error) => this._logger.error('Could not initialize swagger', { error }));
+
+    // Add health check (registered via fastify.register for Swagger compatibility)
+    this.initHealthCheck();
 
     // Add Directus Message API flow creation if enabled
     if (this._config.fileAccess.directus?.generateFlows) {
@@ -306,73 +307,77 @@ export class CitrineOSServer {
       required: ['status', 'database', 'rabbitmq'],
     };
 
-    this._server.get(
-      '/health',
-      {
-        schema: {
-          description: 'Health check endpoint for infrastructure monitoring (Database + RabbitMQ)',
-          tags: ['System'],
-          response: {
-            200: {
-              description: 'All services are healthy',
-              ...healthResponseSchema,
-            },
-            503: {
-              description: 'One or more services are unhealthy',
-              ...healthResponseSchema,
+    const config = this._config;
+
+    // Use fastify.register() for proper Swagger integration
+    this._server.register(async (fastify) => {
+      fastify.get(
+        '/health',
+        {
+          schema: {
+            description:
+              'Health check endpoint for infrastructure monitoring (Database + RabbitMQ)',
+            tags: ['System'],
+            response: {
+              200: {
+                description: 'All services are healthy',
+                ...healthResponseSchema,
+              },
+              503: {
+                description: 'One or more services are unhealthy',
+                ...healthResponseSchema,
+              },
             },
           },
         },
-      },
-      async (_request, reply) => {
-        const healthStatus: {
-          status: string;
-          database: string;
-          rabbitmq: string;
-          errors?: string[];
-        } = {
-          status: 'healthy',
-          database: 'unknown',
-          rabbitmq: 'unknown',
-        };
-        const errors: string[] = [];
+        async (_request, reply) => {
+          const healthStatus: {
+            status: string;
+            database: string;
+            rabbitmq: string;
+            errors?: string[];
+          } = {
+            status: 'healthy',
+            database: 'unknown',
+            rabbitmq: 'unknown',
+          };
+          const errors: string[] = [];
 
-        // Check database connection
-        try {
-          await sequelize.DefaultSequelizeInstance.getInstance(this._config).authenticate();
-          healthStatus.database = 'connected';
-        } catch (error) {
-          healthStatus.database = 'disconnected';
-          errors.push('Database connection failed');
-          this._logger.error('Health check failed - database connection error:', error);
-        }
-
-        // Check RabbitMQ connection
-        try {
-          const amqpUrl = this._config.util.messageBroker.amqp?.url;
-          if (amqpUrl) {
-            const connection = await amqplib.connect(amqpUrl);
-            await connection.close();
-            healthStatus.rabbitmq = 'connected';
-          } else {
-            healthStatus.rabbitmq = 'not_configured';
+          // Check database connection
+          try {
+            await sequelize.DefaultSequelizeInstance.getInstance(config).authenticate();
+            healthStatus.database = 'connected';
+          } catch (error) {
+            healthStatus.database = 'disconnected';
+            errors.push('Database connection failed');
           }
-        } catch (error) {
-          healthStatus.rabbitmq = 'disconnected';
-          errors.push('RabbitMQ connection failed');
-          this._logger.error('Health check failed - RabbitMQ connection error:', error);
-        }
 
-        // Determine overall health status
-        if (errors.length > 0) {
-          healthStatus.status = 'unhealthy';
-          healthStatus.errors = errors;
-          return reply.status(503).send(healthStatus);
-        }
+          // Check RabbitMQ connection
+          try {
+            const amqpUrl = config.util.messageBroker.amqp?.url;
+            if (amqpUrl) {
+              const connection = await amqplib.connect(amqpUrl);
+              await connection.close();
+              healthStatus.rabbitmq = 'connected';
+            } else {
+              healthStatus.rabbitmq = 'not_configured';
+            }
+          } catch (error) {
+            healthStatus.rabbitmq = 'disconnected';
+            errors.push('RabbitMQ connection failed');
+          }
 
-        return healthStatus;
-      },
-    );
+          // Determine overall health status
+          if (errors.length > 0) {
+            healthStatus.status = 'unhealthy';
+            healthStatus.errors = errors;
+            return reply.status(503).send(healthStatus);
+          }
+
+          return healthStatus;
+        },
+      );
+    });
   }
 
   private initAjv(ajv?: Ajv) {
