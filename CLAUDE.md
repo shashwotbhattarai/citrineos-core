@@ -1103,6 +1103,110 @@ docker exec $(docker ps -qf "ancestor=containrrr/watchtower") /watchtower --run-
 | `Server/docker-compose-ec2.yml`                   | EC2 production stack with Watchtower |
 | `Server/.env.ec2.example`                         | Environment template                 |
 | `Server/deploy.Dockerfile`                        | Docker build file                    |
+| `Server/hasura.Dockerfile`                        | Custom Hasura image with metadata    |
+
+---
+
+## 🏥 **Health Check API** (Implemented ✅)
+
+**Status**: ✅ Fully implemented (January 22, 2026)
+**Endpoint**: `GET /health`
+**Swagger**: Available under `System` tag
+
+### Overview
+
+The `/health` endpoint provides comprehensive infrastructure monitoring by checking all external dependencies. This endpoint is used by Docker healthchecks to determine container health status.
+
+### What It Checks
+
+| Dependency         | Check Method                              | Description                                          |
+| ------------------ | ----------------------------------------- | ---------------------------------------------------- |
+| **Database (RDS)** | `sequelize.authenticate()`                | Verifies PostgreSQL connection is active             |
+| **RabbitMQ**       | `amqplib.connect()` + close               | Establishes and closes AMQP connection               |
+| **S3**             | `HeadBucketCommand` + `HeadObjectCommand` | Verifies bucket exists and config.json is accessible |
+
+### Response Format
+
+**Healthy Response (HTTP 200):**
+
+```json
+{
+  "status": "healthy",
+  "database": "connected",
+  "rabbitmq": "connected",
+  "s3": "connected"
+}
+```
+
+**Unhealthy Response (HTTP 503):**
+
+```json
+{
+  "status": "unhealthy",
+  "database": "connected",
+  "rabbitmq": "disconnected",
+  "s3": "connected",
+  "errors": ["RabbitMQ connection failed"]
+}
+```
+
+### Possible States
+
+| State            | Meaning                                                       |
+| ---------------- | ------------------------------------------------------------- |
+| `connected`      | Service is accessible and responding                          |
+| `disconnected`   | Service is unreachable or returned an error                   |
+| `not_configured` | Service is not configured (e.g., S3 when using local storage) |
+| `unknown`        | Check hasn't completed yet                                    |
+
+### Docker Healthcheck Configuration
+
+The health endpoint is used in `docker-compose-ec2.yml`:
+
+```yaml
+citrine:
+  healthcheck:
+    test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 60s
+```
+
+### Container Startup Order
+
+The health check ensures proper container dependency ordering:
+
+```
+1. RabbitMQ starts → becomes healthy (port check)
+2. Citrine starts → /health checks DB + RabbitMQ + S3 → becomes healthy
+3. Hasura starts → only AFTER citrine is healthy (depends_on: service_healthy)
+```
+
+### Use Cases
+
+1. **Docker Healthcheck**: Determines when citrine is ready to serve requests
+2. **Load Balancer**: Can be used for health checks in production load balancers
+3. **Monitoring**: Integration with monitoring tools (Prometheus, Datadog, etc.)
+4. **Debugging**: Quick way to verify all external dependencies are working
+
+### Testing
+
+```bash
+# Local testing
+curl -s http://localhost:8080/health | jq
+
+# EC2 testing
+curl -s http://43.205.3.181:8080/health | jq
+```
+
+### Key Files
+
+| File                            | Purpose                                                |
+| ------------------------------- | ------------------------------------------------------ |
+| `Server/src/index.ts`           | Health check implementation (`initHealthCheck` method) |
+| `Server/docker-compose-ec2.yml` | Docker healthcheck configuration                       |
+| `Server/deploy.Dockerfile`      | Includes `curl` for healthcheck                        |
 
 ---
 
