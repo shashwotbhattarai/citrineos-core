@@ -55,36 +55,53 @@ This feature changes the payment settlement process from **synchronous HTTP call
 
 ## Payment Status Flow
 
-| Status         | Description                                                     |
-| -------------- | --------------------------------------------------------------- |
-| `NOT_REQUIRED` | No payment needed (zero cost, integration disabled, no idToken) |
-| `QUEUED`       | Successfully pushed to SQS, waiting for midlayer to process     |
-| `QUEUE_FAILED` | Failed to push to SQS (can be retried later)                    |
-| `COMPLETED`    | Payment successfully processed by midlayer                      |
-| `FAILED`       | Payment failed after midlayer attempted processing              |
+| Status         | Description                                                           |
+| -------------- | --------------------------------------------------------------------- |
+| `PENDING`      | **Default** - Transaction ended, payment processing not yet attempted |
+| `NOT_REQUIRED` | No payment needed (zero cost, integration disabled)                   |
+| `QUEUED`       | Successfully pushed to SQS, waiting for midlayer to process           |
+| `QUEUE_FAILED` | Failed to push to SQS (config error, SQS down - can be retried)       |
+| `COMPLETED`    | Payment successfully processed by midlayer                            |
+| `FAILED`       | Payment failed after midlayer attempted processing                    |
 
 ```
+Transaction created (StartTransaction)
+         ↓
+   paymentStatus = PENDING (default)
+         ↓
 Transaction ends (StopTransaction)
          ↓
-   Payment needed?
+   Integration enabled?
          ↓
     ┌────┴────┐
     No       Yes
     ↓         ↓
-NOT_REQUIRED  Try SQS Publish
+NOT_REQUIRED  SQS configured?
               ↓
-       ┌──────┴──────┐
-       ↓             ↓
-    Success       Failure
-       ↓             ↓
-    QUEUED     QUEUE_FAILED
-       ↓          (can retry)
-  Midlayer webhook
-       ↓
-    ┌──┴──┐
-    ↓     ↓
-COMPLETED FAILED
+         ┌────┴────┐
+         No       Yes
+         ↓         ↓
+    QUEUE_FAILED  Has cost?
+      (config     ↓
+       error)  ┌──┴──┐
+               No   Yes
+               ↓     ↓
+         NOT_REQUIRED  Try SQS Publish
+                       ↓
+                ┌──────┴──────┐
+                ↓             ↓
+             Success       Failure
+                ↓             ↓
+             QUEUED     QUEUE_FAILED
+                ↓          (can retry)
+          Midlayer webhook
+                ↓
+             ┌──┴──┐
+             ↓     ↓
+         COMPLETED FAILED
 ```
+
+**Important**: If SQS is not configured but wallet integration IS enabled, the status is `QUEUE_FAILED` (not `NOT_REQUIRED`). This ensures payment failures are visible and can be retried.
 
 ---
 

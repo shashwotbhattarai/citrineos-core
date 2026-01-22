@@ -15,18 +15,31 @@ export = {
     // Add paymentStatus ENUM column
     if (!tableDescription['paymentStatus']) {
       // Create ENUM type first
+      // PENDING = transaction ended, payment not yet processed (default)
+      // NOT_REQUIRED = no payment needed (zero cost, integration disabled)
+      // QUEUED = successfully sent to SQS, awaiting midlayer processing
+      // QUEUE_FAILED = failed to send to SQS (config error, SQS down, etc.)
+      // COMPLETED = payment successfully processed by midlayer
+      // FAILED = payment failed after midlayer attempted processing
       await queryInterface.sequelize.query(`
         DO $$ BEGIN
-          CREATE TYPE "enum_Transactions_paymentStatus" AS ENUM ('NOT_REQUIRED', 'QUEUED', 'QUEUE_FAILED', 'COMPLETED', 'FAILED');
+          CREATE TYPE "enum_Transactions_paymentStatus" AS ENUM ('PENDING', 'NOT_REQUIRED', 'QUEUED', 'QUEUE_FAILED', 'COMPLETED', 'FAILED');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;
       `);
 
       await queryInterface.addColumn(TABLE_NAME, 'paymentStatus', {
-        type: DataTypes.ENUM('NOT_REQUIRED', 'QUEUED', 'QUEUE_FAILED', 'COMPLETED', 'FAILED'),
+        type: DataTypes.ENUM(
+          'PENDING',
+          'NOT_REQUIRED',
+          'QUEUED',
+          'QUEUE_FAILED',
+          'COMPLETED',
+          'FAILED',
+        ),
         allowNull: true,
-        defaultValue: null,
+        defaultValue: 'PENDING',
       });
     }
 

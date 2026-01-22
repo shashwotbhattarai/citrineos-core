@@ -138,8 +138,15 @@ export class Transaction extends BaseModelWithTenant implements ITransactionDto 
   declare customData?: any | null;
 
   // Payment settlement fields (async SQS-based payment processing)
+  // PENDING = transaction ended, payment not yet processed
+  // NOT_REQUIRED = no payment needed (zero cost, integration disabled)
+  // QUEUED = successfully sent to SQS, awaiting midlayer processing
+  // QUEUE_FAILED = failed to send to SQS (config error, SQS down, etc.)
+  // COMPLETED = payment successfully processed by midlayer
+  // FAILED = payment failed after midlayer attempted processing
   @Column({
-    type: DataType.ENUM('NOT_REQUIRED', 'QUEUED', 'QUEUE_FAILED', 'COMPLETED', 'FAILED'),
+    type: DataType.ENUM('PENDING', 'NOT_REQUIRED', 'QUEUED', 'QUEUE_FAILED', 'COMPLETED', 'FAILED'),
+    defaultValue: 'PENDING',
   })
   declare paymentStatus?: string | null;
 

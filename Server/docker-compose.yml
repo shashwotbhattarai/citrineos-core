@@ -82,6 +82,9 @@ services:
       YATRI_ENERGY_TIMEOUT: ${YATRI_ENERGY_TIMEOUT:-10000}
       YATRI_MINIMUM_BALANCE: ${YATRI_MINIMUM_BALANCE:-100.0}
       YATRI_WALLET_INTEGRATION_ENABLED: ${YATRI_WALLET_INTEGRATION_ENABLED:-true}
+      # AWS SQS Configuration (Async Payment Processing)
+      YATRI_ENERGY_SQS_REGION: ${YATRI_ENERGY_SQS_REGION:-}
+      YATRI_ENERGY_SQS_QUEUE_URL: ${YATRI_ENERGY_SQS_QUEUE_URL:-}
     depends_on:
       amqp-broker:
         condition: service_healthy

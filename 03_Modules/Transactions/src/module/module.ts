@@ -800,10 +800,12 @@ export class TransactionsModule extends AbstractModule {
     }
 
     // Check if SQS publisher is configured
+    // If wallet integration is enabled but SQS is not configured, this is a configuration error
     if (!this._paymentSqsPublisher) {
-      this._logger.warn('PaymentSqsPublisher not configured, falling back to NOT_REQUIRED status');
+      const errorMsg = `PaymentSqsPublisher not configured but wallet integration is enabled. Configure YATRI_ENERGY_SQS_REGION and YATRI_ENERGY_SQS_QUEUE_URL environment variables.`;
+      this._logger.error(errorMsg);
       await Transaction.update(
-        { paymentStatus: 'NOT_REQUIRED' },
+        { paymentStatus: 'QUEUE_FAILED', paymentErrorMessage: errorMsg },
         { where: { id: transaction.id } },
       );
       return;

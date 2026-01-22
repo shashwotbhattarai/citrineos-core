@@ -309,13 +309,17 @@ export class CitrineOSServer {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
+        walletIntegration: {
+          type: 'string',
+          enum: ['enabled', 'disabled'],
+        },
         sqs: {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
         errors: { type: 'array', items: { type: 'string' } },
       },
-      required: ['status', 'database', 'rabbitmq', 's3', 'sqs'],
+      required: ['status', 'database', 'rabbitmq', 's3', 'walletIntegration', 'sqs'],
     };
 
     const config = this._config;
@@ -342,11 +346,13 @@ export class CitrineOSServer {
           },
         },
         async (_request, reply) => {
+          const walletEnabled = config.yatriEnergy?.enabled === 'true';
           const healthStatus: {
             status: string;
             database: string;
             rabbitmq: string;
             s3: string;
+            walletIntegration: string;
             sqs: string;
             errors?: string[];
           } = {
@@ -354,6 +360,7 @@ export class CitrineOSServer {
             database: 'unknown',
             rabbitmq: 'unknown',
             s3: 'unknown',
+            walletIntegration: walletEnabled ? 'enabled' : 'disabled',
             sqs: 'unknown',
           };
           const errors: string[] = [];
@@ -421,9 +428,11 @@ export class CitrineOSServer {
           }
 
           // Check SQS connection (for async payment processing)
+          // If wallet integration is enabled, SQS MUST be configured and connected
           try {
             const sqsRegion = config.yatriEnergy?.sqsRegion;
             const sqsQueueUrl = config.yatriEnergy?.sqsQueueUrl;
+
             if (sqsRegion && sqsQueueUrl) {
               const sqsClient = new SQSClient({ region: sqsRegion });
               await sqsClient.send(
@@ -433,7 +442,12 @@ export class CitrineOSServer {
                 }),
               );
               healthStatus.sqs = 'connected';
+            } else if (walletEnabled) {
+              // Wallet integration is enabled but SQS is not configured - this is an error
+              healthStatus.sqs = 'not_configured';
+              errors.push('SQS not configured but wallet integration is enabled');
             } else {
+              // Wallet integration is disabled, SQS not needed
               healthStatus.sqs = 'not_configured';
             }
           } catch (error) {
