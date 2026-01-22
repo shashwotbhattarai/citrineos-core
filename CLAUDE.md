@@ -1,6 +1,6 @@
-# CitrinOS Core - CSMS Backend Documentation
+# CitrineOS Core - CSMS Backend Documentation
 
-**Last Updated**: January 22, 2026
+**Last Updated**: January 22, 2026 (Docker Compose simplified)
 **For Claude**: This is the entry point. Start here, then reference supporting docs.
 
 > **📌 ECOSYSTEM CONTEXT**: This is the project-specific documentation for CitrinOS Core CSMS backend. For complete ecosystem overview including yatri-energy-dash-frontend (multi-CPO dashboard), yatri-energy-app (EMSP mobile), citrineos-payment, and all project relationships, see: **[../CLAUDE.md](../CLAUDE.md)**
@@ -537,17 +537,37 @@ This is the core OCPP 2.0.1 and 1.6 compliant Charging Station Management System
 ## Docker Compose Commands
 
 ```bash
-# Start all services
+# Start all services (uses .env automatically)
 cd Server
-docker compose -f docker-compose.yml up -d
+docker compose up -d
 
 # Stop all services
-docker compose -f docker-compose.yml down
+docker compose down
 
 # View logs
-docker logs server-citrine-1
-docker logs server-amqp-broker-1
+docker compose logs -f citrine
+docker compose logs -f amqp-broker
+
+# Restart a service
+docker compose restart citrine
+
+# Check status
+docker compose ps
 ```
+
+### Docker Compose Files
+
+| File                       | Purpose                                          | Usage                                              |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| `docker-compose.yml`       | **Production** - AWS RDS + S3 + Watchtower       | `docker compose up -d`                             |
+| `docker-compose-local.yml` | **Local Development** - Local PostgreSQL + MinIO | `docker compose -f docker-compose-local.yml up -d` |
+
+### Environment Files
+
+| File           | Purpose                             |
+| -------------- | ----------------------------------- |
+| `.env`         | Production credentials (gitignored) |
+| `.env.example` | Template for new deployments        |
 
 ## 🗄️ **AWS RDS Migration Guide** (Implemented ✅)
 
@@ -958,12 +978,12 @@ docker compose -f docker-compose-s3.yml --env-file .env.s3 up -d
 
 ## 🚀 **CI/CD Pipeline & Auto-Deployment** (Implemented ✅)
 
-**Status**: ✅ Fully implemented and tested (January 21, 2026)
-**Files Created**:
+**Status**: ✅ Fully implemented and tested (January 22, 2026)
+**Files**:
 
 - `.github/workflows/yatri-energy-citrine-cicd.yml` - GitHub Actions workflow
-- `Server/docker-compose-ec2.yml` - EC2 production stack with Watchtower
-- `Server/.env.ec2.example` - Environment template for EC2
+- `Server/docker-compose.yml` - Production stack with AWS RDS + S3 + Watchtower
+- `Server/.env.example` - Environment template
 
 ### Architecture Overview
 
@@ -1017,27 +1037,27 @@ docker login -u YOUR_DOCKERHUB_USERNAME
 
 ```bash
 cd /path/to/citrineos-core/Server
-cp .env.ec2.example .env.ec2
-nano .env.ec2  # Fill in your values
+cp .env.example .env
+nano .env  # Fill in your values
 ```
 
 #### 3. Start the Stack
 
 ```bash
-docker compose -f docker-compose-ec2.yml --env-file .env.ec2 up -d
+docker compose up -d
 ```
 
 #### 4. Verify Deployment
 
 ```bash
 # Check all services
-docker compose -f docker-compose-ec2.yml --env-file .env.ec2 ps
+docker compose ps
 
 # Check Watchtower logs
-docker logs $(docker ps -qf "ancestor=containrrr/watchtower") -f
+docker compose logs -f watchtower
 
 # Check CitrineOS logs
-docker logs $(docker ps -qf "name=citrine") -f
+docker compose logs -f citrine
 ```
 
 ### Environment Variables Reference
@@ -1097,13 +1117,15 @@ docker exec $(docker ps -qf "ancestor=containrrr/watchtower") /watchtower --run-
 
 ### Key Files Reference
 
-| File                                              | Purpose                              |
-| ------------------------------------------------- | ------------------------------------ |
-| `.github/workflows/yatri-energy-citrine-cicd.yml` | GitHub Actions CI/CD workflow        |
-| `Server/docker-compose-ec2.yml`                   | EC2 production stack with Watchtower |
-| `Server/.env.ec2.example`                         | Environment template                 |
-| `Server/deploy.Dockerfile`                        | Docker build file                    |
-| `Server/hasura.Dockerfile`                        | Custom Hasura image with metadata    |
+| File                                              | Purpose                                  |
+| ------------------------------------------------- | ---------------------------------------- |
+| `.github/workflows/yatri-energy-citrine-cicd.yml` | GitHub Actions CI/CD workflow            |
+| `Server/docker-compose.yml`                       | Production stack (RDS + S3 + Watchtower) |
+| `Server/docker-compose-local.yml`                 | Local development (PostgreSQL + MinIO)   |
+| `Server/.env.example`                             | Environment template                     |
+| `Server/.env`                                     | Production credentials (gitignored)      |
+| `Server/deploy.Dockerfile`                        | Docker build file                        |
+| `Server/hasura.Dockerfile`                        | Custom Hasura image with metadata        |
 
 ---
 
@@ -1161,7 +1183,7 @@ The `/health` endpoint provides comprehensive infrastructure monitoring by check
 
 ### Docker Healthcheck Configuration
 
-The health endpoint is used in `docker-compose-ec2.yml`:
+The health endpoint is used in `docker-compose.yml`:
 
 ```yaml
 citrine:
@@ -1202,11 +1224,11 @@ curl -s http://43.205.3.181:8080/health | jq
 
 ### Key Files
 
-| File                            | Purpose                                                |
-| ------------------------------- | ------------------------------------------------------ |
-| `Server/src/index.ts`           | Health check implementation (`initHealthCheck` method) |
-| `Server/docker-compose-ec2.yml` | Docker healthcheck configuration                       |
-| `Server/deploy.Dockerfile`      | Includes `curl` for healthcheck                        |
+| File                        | Purpose                                                |
+| --------------------------- | ------------------------------------------------------ |
+| `Server/src/index.ts`       | Health check implementation (`initHealthCheck` method) |
+| `Server/docker-compose.yml` | Docker healthcheck configuration                       |
+| `Server/deploy.Dockerfile`  | Includes `curl` for healthcheck                        |
 
 ---
 
