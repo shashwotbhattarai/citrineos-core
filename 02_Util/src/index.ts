@@ -28,3 +28,4 @@ export { isValidPassword, generatePassword } from './security/authentication';
 export { SignedMeterValuesUtil } from './security/SignedMeterValuesUtil';
 
 export * from './yatri/YatriEnergyClient';
+export * from './yatri/PaymentSqsPublisher';

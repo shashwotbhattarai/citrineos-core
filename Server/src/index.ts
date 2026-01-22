@@ -56,6 +56,7 @@ import {
   TransactionsDataApi,
   TransactionsModule,
   TransactionsOcpp201Api,
+  registerPaymentCallbackApi,
 } from '@citrineos/transactions';
 import {
   CertificatesDataApi,
@@ -86,6 +87,7 @@ import cors from '@fastify/cors';
 import ApiAuthPlugin from '@citrineos/util/dist/authorization/ApiAuthPlugin';
 import * as amqplib from 'amqplib';
 import { HeadBucketCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { SQSClient, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 
 export class CitrineOSServer {
   /**
@@ -307,9 +309,13 @@ export class CitrineOSServer {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
+        sqs: {
+          type: 'string',
+          enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
+        },
         errors: { type: 'array', items: { type: 'string' } },
       },
-      required: ['status', 'database', 'rabbitmq', 's3'],
+      required: ['status', 'database', 'rabbitmq', 's3', 'sqs'],
     };
 
     const config = this._config;
@@ -341,12 +347,14 @@ export class CitrineOSServer {
             database: string;
             rabbitmq: string;
             s3: string;
+            sqs: string;
             errors?: string[];
           } = {
             status: 'healthy',
             database: 'unknown',
             rabbitmq: 'unknown',
             s3: 'unknown',
+            sqs: 'unknown',
           };
           const errors: string[] = [];
 
@@ -410,6 +418,27 @@ export class CitrineOSServer {
           } catch (error) {
             healthStatus.s3 = 'disconnected';
             errors.push('S3 connection failed');
+          }
+
+          // Check SQS connection (for async payment processing)
+          try {
+            const sqsRegion = config.yatriEnergy?.sqsRegion;
+            const sqsQueueUrl = config.yatriEnergy?.sqsQueueUrl;
+            if (sqsRegion && sqsQueueUrl) {
+              const sqsClient = new SQSClient({ region: sqsRegion });
+              await sqsClient.send(
+                new GetQueueAttributesCommand({
+                  QueueUrl: sqsQueueUrl,
+                  AttributeNames: ['QueueArn'],
+                }),
+              );
+              healthStatus.sqs = 'connected';
+            } else {
+              healthStatus.sqs = 'not_configured';
+            }
+          } catch (error) {
+            healthStatus.sqs = 'disconnected';
+            errors.push('SQS connection failed');
           }
 
           // Determine overall health status
@@ -756,6 +785,8 @@ export class CitrineOSServer {
       new TransactionsOcpp201Api(module, this._server, this._logger),
       new TransactionsDataApi(module, this._server, this._logger),
     );
+    // Register payment callback webhook API for async payment processing
+    registerPaymentCallbackApi(this._server, this._logger);
   }
 
   private async initModule(eventGroup = this.eventGroup) {

@@ -136,4 +136,36 @@ export class Transaction extends BaseModelWithTenant implements ITransactionDto 
 
   @Column(DataType.JSONB)
   declare customData?: any | null;
+
+  // Payment settlement fields (async SQS-based payment processing)
+  @Column({
+    type: DataType.ENUM('NOT_REQUIRED', 'QUEUED', 'QUEUE_FAILED', 'COMPLETED', 'FAILED'),
+  })
+  declare paymentStatus?: string | null;
+
+  @Column({
+    type: DataType.UUID,
+    unique: true,
+  })
+  declare paymentIdempotencyKey?: string | null;
+
+  @Column(DataType.STRING)
+  declare walletTransactionId?: string | null;
+
+  @Column({
+    type: DataType.DATE,
+    get() {
+      return this.getDataValue('paymentCompletedAt')?.toISOString();
+    },
+  })
+  declare paymentCompletedAt?: string | null;
+
+  @Column(DataType.TEXT)
+  declare paymentErrorMessage?: string | null;
+
+  @Column(DataType.STRING)
+  declare sqsMessageId?: string | null;
+
+  @Column(DataType.STRING)
+  declare walletProvider?: string | null;
 }

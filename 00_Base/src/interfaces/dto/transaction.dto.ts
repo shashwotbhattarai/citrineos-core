@@ -45,6 +45,14 @@ export interface ITransactionDto extends IBaseDto {
   startTime?: string | null;
   endTime?: string | null;
   customData?: any | null;
+  // Payment settlement fields
+  paymentStatus?: string | null;
+  paymentIdempotencyKey?: string | null;
+  walletTransactionId?: string | null;
+  paymentCompletedAt?: string | null;
+  paymentErrorMessage?: string | null;
+  sqsMessageId?: string | null;
+  walletProvider?: string | null;
 }
 
 export enum TransactionDtoProps {
@@ -77,4 +85,12 @@ export enum TransactionDtoProps {
   startTime = 'startTime',
   endTime = 'endTime',
   customData = 'customData',
+  // Payment settlement fields
+  paymentStatus = 'paymentStatus',
+  paymentIdempotencyKey = 'paymentIdempotencyKey',
+  walletTransactionId = 'walletTransactionId',
+  paymentCompletedAt = 'paymentCompletedAt',
+  paymentErrorMessage = 'paymentErrorMessage',
+  sqsMessageId = 'sqsMessageId',
+  walletProvider = 'walletProvider',
 }

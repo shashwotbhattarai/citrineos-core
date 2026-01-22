@@ -50,7 +50,10 @@ import {
   RealTimeAuthorizer,
   SignedMeterValuesUtil,
   YatriEnergyClient,
+  PaymentSqsPublisher,
+  PaymentSettlementPayload,
 } from '@citrineos/util';
+import { v4 as uuidv4 } from 'uuid';
 import { ILogObj, Logger } from 'tslog';
 import { TransactionService } from './TransactionService';
 import { StatusNotificationService } from './StatusNotificationService';
@@ -87,6 +90,7 @@ export class TransactionsModule extends AbstractModule {
 
   private readonly _sendCostUpdatedOnMeterValue: boolean | undefined;
   private readonly _costUpdatedInterval: number | undefined;
+  private _paymentSqsPublisher?: PaymentSqsPublisher;
 
   /**
    * This is the constructor function that initializes the {@link TransactionsModule}.
@@ -243,6 +247,16 @@ export class TransactionsModule extends AbstractModule {
       this._costCalculator,
       this._logger,
     );
+
+    // Initialize SQS publisher for async payment processing if configured
+    if (config.yatriEnergy?.sqsRegion && config.yatriEnergy?.sqsQueueUrl) {
+      this._paymentSqsPublisher = new PaymentSqsPublisher(
+        config.yatriEnergy.sqsRegion,
+        config.yatriEnergy.sqsQueueUrl,
+        this._logger,
+      );
+      this._logger.info('PaymentSqsPublisher initialized for async payment processing');
+    }
   }
 
   get transactionEventRepository(): ITransactionEventRepository {
@@ -756,103 +770,136 @@ export class TransactionsModule extends AbstractModule {
   }
 
   /**
-   * Process payment settlement after transaction completion using Yatri Energy backend
+   * Process payment settlement after transaction completion using async SQS queue.
+   *
+   * This method:
+   * 1. Checks if payment is required (integration enabled, valid idToken, non-zero cost)
+   * 2. Generates an idempotency key to prevent duplicate charges
+   * 3. Publishes payment request to AWS SQS queue
+   * 4. Updates transaction status to QUEUED or QUEUE_FAILED
+   *
+   * The actual payment processing is handled by Yatri Energy Backend,
+   * which consumes from SQS and calls the webhook callback when done.
    */
   private async _processYatriPaymentSettlement(
     transaction: Transaction,
     message: IMessage<OCPP1_6.StopTransactionRequest>,
   ): Promise<void> {
-    try {
-      // Get system configuration to check if Yatri Energy integration is enabled
-      const config = this._config as SystemConfig;
-      if (!config.yatriEnergy?.enabled) {
-        this._logger.debug(
-          'Yatri Energy wallet integration is disabled, skipping payment settlement',
-        );
-        return;
-      }
+    const config = this._config as SystemConfig;
 
-      // Get idToken from transaction authorization
-      const idToken = transaction.authorization?.idToken;
-      if (!idToken) {
-        this._logger.warn(
-          `No idToken found for transaction ${transaction.transactionId}, cannot process payment settlement`,
-        );
-        return;
-      }
-
-      // Calculate final cost using CostCalculator
-      const costCalculator = new CostCalculator(
-        this._tariffRepository,
-        this._transactionService,
-        this._logger,
+    // Check if Yatri Energy integration is enabled
+    if (!config.yatriEnergy?.enabled || config.yatriEnergy.enabled !== 'true') {
+      this._logger.debug(
+        'Yatri Energy wallet integration is disabled, skipping payment settlement',
       );
-      const totalCostAmount = await costCalculator.calculateTotalCost(
-        message.context.tenantId,
-        transaction.stationId,
-        transaction.id,
-        transaction.totalKwh,
+      await Transaction.update(
+        { paymentStatus: 'NOT_REQUIRED' },
+        { where: { id: transaction.id } },
       );
+      return;
+    }
 
-      if (!totalCostAmount || totalCostAmount <= 0) {
-        this._logger.debug(
-          `No cost to charge for transaction ${transaction.transactionId}, skipping payment settlement`,
-        );
-        return;
-      }
-
-      // Create Yatri Energy client
-      const yatriClient = new YatriEnergyClient(
-        config.yatriEnergy.baseUrl,
-        config.yatriEnergy.timeout,
-        config.yatriEnergy.apiKey,
-        this._logger,
+    // Check if SQS publisher is configured
+    if (!this._paymentSqsPublisher) {
+      this._logger.warn('PaymentSqsPublisher not configured, falling back to NOT_REQUIRED status');
+      await Transaction.update(
+        { paymentStatus: 'NOT_REQUIRED' },
+        { where: { id: transaction.id } },
       );
+      return;
+    }
 
-      // Process payment settlement
-      const paymentResponse = await yatriClient.makePayment({
-        idToken,
-        amount: totalCostAmount,
-        currency: 'NPR',
-        transactionId: parseInt(transaction.transactionId),
-        stationId: transaction.stationId,
-        description: `EV Charging - Station ${transaction.stationId} - ${transaction.totalKwh?.toFixed(2)}kWh`,
-        additionalData: {
-          tenantId: message.context.tenantId,
-          energyConsumed: transaction.totalKwh,
-          duration:
-            transaction.endTime && transaction.startTransaction?.timestamp
-              ? new Date(transaction.endTime).getTime() -
-                new Date(transaction.startTransaction.timestamp).getTime()
-              : 0,
-          stoppedReason: transaction.stoppedReason,
+    // Get idToken from transaction authorization
+    // This should NEVER be missing - transactions require authorization first
+    const idToken = transaction.authorization?.idToken;
+    if (!idToken) {
+      const errorMsg = `CRITICAL: No idToken found for transaction ${transaction.transactionId} (DB ID: ${transaction.id}). This indicates a data integrity issue - transactions should always have an authorization.`;
+      this._logger.error(errorMsg);
+      await Transaction.update(
+        { paymentStatus: 'QUEUE_FAILED', paymentErrorMessage: errorMsg },
+        { where: { id: transaction.id } },
+      );
+      throw new Error(errorMsg);
+    }
+
+    // Calculate final cost using CostCalculator
+    const totalCostAmount = await this._costCalculator.calculateTotalCost(
+      message.context.tenantId,
+      transaction.stationId,
+      transaction.id,
+      transaction.totalKwh,
+    );
+
+    if (!totalCostAmount || totalCostAmount <= 0) {
+      this._logger.debug(
+        `No cost to charge for transaction ${transaction.transactionId}, marking as NOT_REQUIRED`,
+      );
+      await Transaction.update(
+        { paymentStatus: 'NOT_REQUIRED' },
+        { where: { id: transaction.id } },
+      );
+      return;
+    }
+
+    // Generate idempotency key to prevent duplicate charges
+    const paymentIdempotencyKey = uuidv4();
+
+    // Prepare SQS payload
+    const payload: PaymentSettlementPayload = {
+      paymentIdempotencyKey,
+      transactionDatabaseId: transaction.id,
+      transactionId: transaction.transactionId,
+      stationId: transaction.stationId,
+      tenantId: message.context.tenantId,
+      idToken: idToken.toLowerCase(),
+      amount: totalCostAmount,
+      currency: 'NPR',
+      energyKwh: transaction.totalKwh || 0,
+      startTime: transaction.startTime,
+      endTime: transaction.endTime,
+      stoppedReason: transaction.stoppedReason || undefined,
+    };
+
+    // Try to publish to SQS
+    const result = await this._paymentSqsPublisher.publish(payload);
+
+    if (result.success) {
+      // Successfully queued - update transaction status
+      await Transaction.update(
+        {
+          paymentStatus: 'QUEUED',
+          paymentIdempotencyKey,
+          totalCost: totalCostAmount,
+          sqsMessageId: result.messageId,
         },
-      });
-
-      if (paymentResponse?.status === 'COMPLETED') {
-        this._logger.info(`Payment settlement completed successfully`, {
-          status: paymentResponse?.status,
-          transactionId: transaction.transactionId,
-          idToken,
-          amount: paymentResponse.amount,
-          newBalance: paymentResponse.newBalance,
-          paymentTransactionId: paymentResponse.yatriWalletTransactionId,
-        });
-      } else {
-        this._logger.error(`Payment settlement failed`, {
-          status: paymentResponse?.status,
-          transactionId: transaction.transactionId,
-          idToken,
-          totalamount: totalCostAmount,
-          message: paymentResponse?.remarks,
-        });
-      }
-    } catch (error) {
-      this._logger.error(
-        `Yatri Energy payment settlement failed for transaction ${transaction.transactionId}`,
-        error,
+        { where: { id: transaction.id } },
       );
-      // Don't throw error - payment failure should not block transaction completion
+
+      this._logger.info('Payment request queued to SQS', {
+        transactionId: transaction.transactionId,
+        transactionDatabaseId: transaction.id,
+        paymentIdempotencyKey,
+        sqsMessageId: result.messageId,
+        amount: totalCostAmount,
+      });
+    } else {
+      // Failed to queue - update transaction status
+      await Transaction.update(
+        {
+          paymentStatus: 'QUEUE_FAILED',
+          paymentIdempotencyKey,
+          totalCost: totalCostAmount,
+          paymentErrorMessage: result.error,
+        },
+        { where: { id: transaction.id } },
+      );
+
+      this._logger.error('Failed to queue payment to SQS', {
+        transactionId: transaction.transactionId,
+        transactionDatabaseId: transaction.id,
+        error: result.error,
+        amount: totalCostAmount,
+      });
     }
   }
 }

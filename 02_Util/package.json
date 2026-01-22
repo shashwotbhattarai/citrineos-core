@@ -23,6 +23,7 @@
     "@types/jsrsasign": "10.5.14"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.700.0",
     "@citrineos/base": "1.8.0",
     "@citrineos/data": "1.8.0",
     "@directus/sdk": "15.0.3",

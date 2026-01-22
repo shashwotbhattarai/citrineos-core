@@ -297,6 +297,9 @@ export function createDockerConfig() {
       timeout: parseInt(process.env.YATRI_ENERGY_TIMEOUT || '10000', 10),
       minimumBalance: parseFloat(process.env.YATRI_MINIMUM_BALANCE || '100.0'),
       enabled: process.env.YATRI_WALLET_INTEGRATION_ENABLED || 'false',
+      // SQS configuration for async payment processing
+      sqsRegion: process.env.YATRI_ENERGY_SQS_REGION,
+      sqsQueueUrl: process.env.YATRI_ENERGY_SQS_QUEUE_URL,
     },
   });
 }
