@@ -309,6 +309,10 @@ export class CitrineOSServer {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
+        hasura: {
+          type: 'string',
+          enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
+        },
         walletIntegration: {
           type: 'string',
           enum: ['enabled', 'disabled'],
@@ -319,7 +323,7 @@ export class CitrineOSServer {
         },
         errors: { type: 'array', items: { type: 'string' } },
       },
-      required: ['status', 'database', 'rabbitmq', 's3', 'walletIntegration', 'sqs'],
+      required: ['status', 'database', 'rabbitmq', 's3', 'hasura', 'walletIntegration', 'sqs'],
     };
 
     const config = this._config;
@@ -352,6 +356,7 @@ export class CitrineOSServer {
             database: string;
             rabbitmq: string;
             s3: string;
+            hasura: string;
             walletIntegration: string;
             sqs: string;
             errors?: string[];
@@ -360,6 +365,7 @@ export class CitrineOSServer {
             database: 'unknown',
             rabbitmq: 'unknown',
             s3: 'unknown',
+            hasura: 'unknown',
             walletIntegration: walletEnabled ? 'enabled' : 'disabled',
             sqs: 'unknown',
           };
@@ -425,6 +431,28 @@ export class CitrineOSServer {
           } catch (error) {
             healthStatus.s3 = 'disconnected';
             errors.push('S3 connection failed');
+          }
+
+          // Check Hasura GraphQL Engine connection
+          try {
+            const hasuraUrl = process.env.HASURA_HEALTH_URL || 'http://graphql-engine:8080/healthz';
+            if (hasuraUrl) {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 5000);
+              const response = await fetch(hasuraUrl, { signal: controller.signal });
+              clearTimeout(timeoutId);
+              if (response.ok) {
+                healthStatus.hasura = 'connected';
+              } else {
+                healthStatus.hasura = 'disconnected';
+                errors.push(`Hasura returned status ${response.status}`);
+              }
+            } else {
+              healthStatus.hasura = 'not_configured';
+            }
+          } catch (error) {
+            healthStatus.hasura = 'disconnected';
+            errors.push('Hasura connection failed');
           }
 
           // Check SQS connection (for async payment processing)
