@@ -87,7 +87,6 @@ import cors from '@fastify/cors';
 import ApiAuthPlugin from '@citrineos/util/dist/authorization/ApiAuthPlugin';
 import * as amqplib from 'amqplib';
 import { HeadBucketCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { SQSClient, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 
 export class CitrineOSServer {
   /**
@@ -317,13 +316,21 @@ export class CitrineOSServer {
           type: 'string',
           enum: ['enabled', 'disabled'],
         },
-        sqs: {
+        paymentQueue: {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
         errors: { type: 'array', items: { type: 'string' } },
       },
-      required: ['status', 'database', 'rabbitmq', 's3', 'hasura', 'walletIntegration', 'sqs'],
+      required: [
+        'status',
+        'database',
+        'rabbitmq',
+        's3',
+        'hasura',
+        'walletIntegration',
+        'paymentQueue',
+      ],
     };
 
     const config = this._config;
@@ -358,7 +365,7 @@ export class CitrineOSServer {
             s3: string;
             hasura: string;
             walletIntegration: string;
-            sqs: string;
+            paymentQueue: string;
             errors?: string[];
           } = {
             status: 'healthy',
@@ -367,7 +374,7 @@ export class CitrineOSServer {
             s3: 'unknown',
             hasura: 'unknown',
             walletIntegration: walletEnabled ? 'enabled' : 'disabled',
-            sqs: 'unknown',
+            paymentQueue: 'unknown',
           };
           const errors: string[] = [];
 
@@ -455,32 +462,26 @@ export class CitrineOSServer {
             errors.push('Hasura connection failed');
           }
 
-          // Check SQS connection (for async payment processing)
-          // If wallet integration is enabled, SQS MUST be configured and connected
+          // Check midlayer RabbitMQ connection (for async payment processing)
+          // If wallet integration is enabled, midlayer RabbitMQ MUST be configured and connected
           try {
-            const sqsRegion = config.yatriEnergy?.sqsRegion;
-            const sqsQueueUrl = config.yatriEnergy?.sqsQueueUrl;
+            const midlayerRabbitMqUrl = config.yatriEnergy?.rabbitmqUrl;
 
-            if (sqsRegion && sqsQueueUrl) {
-              const sqsClient = new SQSClient({ region: sqsRegion });
-              await sqsClient.send(
-                new GetQueueAttributesCommand({
-                  QueueUrl: sqsQueueUrl,
-                  AttributeNames: ['QueueArn'],
-                }),
-              );
-              healthStatus.sqs = 'connected';
+            if (midlayerRabbitMqUrl) {
+              const connection = await amqplib.connect(midlayerRabbitMqUrl);
+              await connection.close();
+              healthStatus.paymentQueue = 'connected';
             } else if (walletEnabled) {
-              // Wallet integration is enabled but SQS is not configured - this is an error
-              healthStatus.sqs = 'not_configured';
-              errors.push('SQS not configured but wallet integration is enabled');
+              // Wallet integration is enabled but midlayer RabbitMQ is not configured - this is an error
+              healthStatus.paymentQueue = 'not_configured';
+              errors.push('Midlayer RabbitMQ not configured but wallet integration is enabled');
             } else {
-              // Wallet integration is disabled, SQS not needed
-              healthStatus.sqs = 'not_configured';
+              // Wallet integration is disabled, payment queue not needed
+              healthStatus.paymentQueue = 'not_configured';
             }
           } catch (error) {
-            healthStatus.sqs = 'disconnected';
-            errors.push('SQS connection failed');
+            healthStatus.paymentQueue = 'disconnected';
+            errors.push('Midlayer RabbitMQ connection failed');
           }
 
           // Determine overall health status

@@ -273,9 +273,12 @@ export const systemConfigInputSchema = z.object({
     timeout: z.number().int().positive(),
     minimumBalance: z.number().positive(),
     enabled: z.string(),
-    // SQS configuration for async payment processing
+    // SQS configuration for async payment processing (DEPRECATED)
     sqsRegion: z.string().optional(),
     sqsQueueUrl: z.string().optional(),
+    // RabbitMQ configuration for async payment processing (midlayer)
+    rabbitmqUrl: z.string().optional(),
+    rabbitmqExchange: z.string().optional(),
   }),
 });
 
@@ -566,9 +569,12 @@ export const systemConfigSchema = z
       timeout: z.number().int().positive(),
       minimumBalance: z.number().positive(),
       enabled: z.string(),
-      // SQS configuration for async payment processing
+      // SQS configuration for async payment processing (DEPRECATED)
       sqsRegion: z.string().optional(),
       sqsQueueUrl: z.string().optional(),
+      // RabbitMQ configuration for async payment processing (midlayer)
+      rabbitmqUrl: z.string().optional(),
+      rabbitmqExchange: z.string().optional(),
     }),
   })
   .refine((obj) => obj.maxCachingSeconds >= obj.maxCallLengthSeconds, {
