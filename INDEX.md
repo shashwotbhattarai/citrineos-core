@@ -20,6 +20,7 @@
 | **Create RFID cards**              | [RFID_CARD_CREATION_GUIDE.md](./RFID_CARD_CREATION_GUIDE.md)                       |
 | **Integrate wallet payments**      | [YATRI_WALLET_INTEGRATION.md](./YATRI_WALLET_INTEGRATION.md)                       |
 | **Payment queue (RabbitMQ)**       | [PAYMENT_QUEUE_INTEGRATION.md](./PAYMENT_QUEUE_INTEGRATION.md)                     |
+| **Subscribe to charger events**    | [MIDLAYER_WEBHOOK_INTEGRATION.md](./MIDLAYER_WEBHOOK_INTEGRATION.md)               |
 | **Handle offline charging**        | [OCPP_1.6_OFFLINE_TRANSACTIONS_GUIDE.md](./OCPP_1.6_OFFLINE_TRANSACTIONS_GUIDE.md) |
 | **Debug OCPP issues**              | [OCPP_TROUBLESHOOTING_GUIDE.md](./OCPP_TROUBLESHOOTING_GUIDE.md)                   |
 | **Understand OCPP 1.6 vs 2.0.1**   | [OCPP_VERSION_COMPATIBILITY.md](./OCPP_VERSION_COMPATIBILITY.md)                   |
@@ -58,6 +59,11 @@ CLAUDE.md                          [ENTRY POINT - Read First]
 │   ├── YATRI_WALLET_INTEGRATION.md              [Wallet balance & payments]
 │   ├── OCPP_1.6_OFFLINE_TRANSACTIONS_GUIDE.md   [Offline charging]
 │   └── ADVANCED_OPERATIONS.md                   [Billing, tariffs, offline]
+│
+├── Integration Guides
+│   ├── MIDLAYER_WEBHOOK_INTEGRATION.md          [Real-time OCPP webhooks] ⭐
+│   ├── PAYMENT_QUEUE_INTEGRATION.md             [RabbitMQ payment queue]
+│   └── SYNC_REMOTE_OPERATIONS_DESIGN.md         [Proposed: sync RemoteStart/Stop]
 │
 ├── API Reference
 │   ├── API_REFERENCE.md                         [All endpoints]
@@ -102,6 +108,16 @@ OCPP_VERSION_COMPATIBILITY.md (understand protocol differences)
 OCPP_1.6_OFFLINE_TRANSACTIONS_GUIDE.md (OCPP 1.6 specific)
     ↓ or
 ADVANCED_OPERATIONS.md (OCPP 2.0.1 specific)
+```
+
+### Midlayer Integration
+
+```
+MIDLAYER_WEBHOOK_INTEGRATION.md (real-time OCPP events)
+    ↓ receives
+PAYMENT_QUEUE_INTEGRATION.md (transaction settlement)
+    ↓ alternative
+SYNC_REMOTE_OPERATIONS_DESIGN.md (proposed sync API)
 ```
 
 ---
