@@ -52,6 +52,8 @@ import {
   YatriEnergyClient,
   PaymentSqsPublisher,
   PaymentSettlementPayload,
+  PaymentRabbitMqPublisher,
+  PaymentRoutingKeys,
 } from '@citrineos/util';
 import { v4 as uuidv4 } from 'uuid';
 import { ILogObj, Logger } from 'tslog';
@@ -91,6 +93,7 @@ export class TransactionsModule extends AbstractModule {
   private readonly _sendCostUpdatedOnMeterValue: boolean | undefined;
   private readonly _costUpdatedInterval: number | undefined;
   private _paymentSqsPublisher?: PaymentSqsPublisher;
+  private _paymentRabbitMqPublisher?: PaymentRabbitMqPublisher;
 
   /**
    * This is the constructor function that initializes the {@link TransactionsModule}.
@@ -249,13 +252,43 @@ export class TransactionsModule extends AbstractModule {
     );
 
     // Initialize SQS publisher for async payment processing if configured
-    if (config.yatriEnergy?.sqsRegion && config.yatriEnergy?.sqsQueueUrl) {
-      this._paymentSqsPublisher = new PaymentSqsPublisher(
-        config.yatriEnergy.sqsRegion,
-        config.yatriEnergy.sqsQueueUrl,
+    // COMMENTED OUT: Switching to RabbitMQ for payment processing
+    // if (config.yatriEnergy?.sqsRegion && config.yatriEnergy?.sqsQueueUrl) {
+    //   this._paymentSqsPublisher = new PaymentSqsPublisher(
+    //     config.yatriEnergy.sqsRegion,
+    //     config.yatriEnergy.sqsQueueUrl,
+    //     this._logger,
+    //   );
+    //   this._logger.info('PaymentSqsPublisher initialized for async payment processing');
+    // }
+
+    // Initialize RabbitMQ publisher for async payment processing
+    // Uses SEPARATE midlayer RabbitMQ (not the CitrineOS core RabbitMQ)
+    // Exchange: citrineos (direct exchange)
+    // Routing Key: payment.settlement
+    // Consumer should bind queue 'paymentRequests' to this routing key
+    const midlayerRabbitMqUrl = config.yatriEnergy?.rabbitmqUrl;
+    const midlayerRabbitMqExchange = config.yatriEnergy?.rabbitmqExchange || 'citrineos';
+    if (midlayerRabbitMqUrl && config.yatriEnergy?.enabled === 'true') {
+      this._paymentRabbitMqPublisher = new PaymentRabbitMqPublisher(
+        midlayerRabbitMqUrl,
+        midlayerRabbitMqExchange,
         this._logger,
       );
-      this._logger.info('PaymentSqsPublisher initialized for async payment processing');
+      // Connect asynchronously - don't block startup
+      this._paymentRabbitMqPublisher.connect().catch((err) => {
+        this._logger.error(
+          'Failed to connect PaymentRabbitMqPublisher to midlayer RabbitMQ on startup',
+          err,
+        );
+      });
+      this._logger.info(
+        'PaymentRabbitMqPublisher initialized for async payment processing (midlayer)',
+        {
+          exchange: midlayerRabbitMqExchange,
+          routingKey: PaymentRoutingKeys.SETTLEMENT,
+        },
+      );
     }
   }
 
@@ -770,16 +803,16 @@ export class TransactionsModule extends AbstractModule {
   }
 
   /**
-   * Process payment settlement after transaction completion using async SQS queue.
+   * Process payment settlement after transaction completion using RabbitMQ.
    *
    * This method:
    * 1. Checks if payment is required (integration enabled, valid idToken, non-zero cost)
    * 2. Generates an idempotency key to prevent duplicate charges
-   * 3. Publishes payment request to AWS SQS queue
+   * 3. Publishes payment request to RabbitMQ (exchange: citrineos, routing key: payment.settlement)
    * 4. Updates transaction status to QUEUED or QUEUE_FAILED
    *
    * The actual payment processing is handled by Yatri Energy Backend,
-   * which consumes from SQS and calls the webhook callback when done.
+   * which consumes from the paymentRequests queue bound to the exchange.
    */
   private async _processYatriPaymentSettlement(
     transaction: Transaction,
@@ -799,10 +832,10 @@ export class TransactionsModule extends AbstractModule {
       return;
     }
 
-    // Check if SQS publisher is configured
-    // If wallet integration is enabled but SQS is not configured, this is a configuration error
-    if (!this._paymentSqsPublisher) {
-      const errorMsg = `PaymentSqsPublisher not configured but wallet integration is enabled. Configure YATRI_ENERGY_SQS_REGION and YATRI_ENERGY_SQS_QUEUE_URL environment variables.`;
+    // Check if RabbitMQ publisher is configured
+    // If wallet integration is enabled but RabbitMQ is not configured, this is a configuration error
+    if (!this._paymentRabbitMqPublisher) {
+      const errorMsg = `PaymentRabbitMqPublisher not configured but wallet integration is enabled. Configure RABBITMQ_URL and RABBITMQ_EXCHANGE environment variables.`;
       this._logger.error(errorMsg);
       await Transaction.update(
         { paymentStatus: 'QUEUE_FAILED', paymentErrorMessage: errorMsg },
@@ -846,7 +879,7 @@ export class TransactionsModule extends AbstractModule {
     // Generate idempotency key to prevent duplicate charges
     const paymentIdempotencyKey = uuidv4();
 
-    // Prepare SQS payload
+    // Prepare RabbitMQ payload
     const payload: PaymentSettlementPayload = {
       paymentIdempotencyKey,
       transactionDatabaseId: transaction.id,
@@ -862,8 +895,8 @@ export class TransactionsModule extends AbstractModule {
       stoppedReason: transaction.stoppedReason || undefined,
     };
 
-    // Try to publish to SQS
-    const result = await this._paymentSqsPublisher.publish(payload);
+    // Try to publish to RabbitMQ
+    const result = await this._paymentRabbitMqPublisher.publish(payload);
 
     if (result.success) {
       // Successfully queued - update transaction status
@@ -872,17 +905,16 @@ export class TransactionsModule extends AbstractModule {
           paymentStatus: 'QUEUED',
           paymentIdempotencyKey,
           totalCost: totalCostAmount,
-          sqsMessageId: result.messageId,
         },
         { where: { id: transaction.id } },
       );
 
-      this._logger.info('Payment request queued to SQS', {
+      this._logger.info('Payment request queued to RabbitMQ', {
         transactionId: transaction.transactionId,
         transactionDatabaseId: transaction.id,
         paymentIdempotencyKey,
-        sqsMessageId: result.messageId,
         amount: totalCostAmount,
+        routingKey: 'payment.settlement',
       });
     } else {
       // Failed to queue - update transaction status
@@ -896,7 +928,7 @@ export class TransactionsModule extends AbstractModule {
         { where: { id: transaction.id } },
       );
 
-      this._logger.error('Failed to queue payment to SQS', {
+      this._logger.error('Failed to queue payment to RabbitMQ', {
         transactionId: transaction.transactionId,
         transactionDatabaseId: transaction.id,
         error: result.error,
