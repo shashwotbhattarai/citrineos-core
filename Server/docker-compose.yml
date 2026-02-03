@@ -76,6 +76,9 @@ services:
       AWS_REGION: ${AWS_REGION:-ap-south-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # === INTERNAL RABBITMQ (CitrineOS message broker) ===
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
       # Yatri Energy Integration
       YATRI_ENERGY_BASE_URL: ${YATRI_ENERGY_BASE_URL:-https://api.dev.yatri-energy.yatrimotorcycle.com}
       YATRI_ENERGY_API_KEY: ${YATRI_ENERGY_API_KEY:-}
@@ -85,6 +88,9 @@ services:
       # AWS SQS Configuration (Async Payment Processing)
       YATRI_ENERGY_SQS_REGION: ${YATRI_ENERGY_SQS_REGION:-}
       YATRI_ENERGY_SQS_QUEUE_URL: ${YATRI_ENERGY_SQS_QUEUE_URL:-}
+      # Midlayer RabbitMQ (for async payment queue)
+      YATRI_ENERGY_RABBITMQ_URL: ${YATRI_ENERGY_RABBITMQ_URL:-}
+      YATRI_ENERGY_RABBITMQ_EXCHANGE: ${YATRI_ENERGY_RABBITMQ_EXCHANGE:-citrineos}
     depends_on:
       amqp-broker:
         condition: service_healthy

@@ -116,6 +116,16 @@ function applyEnvVarOverrides(config: SystemConfig): SystemConfig {
     console.log('[Config] Applied YATRI_ENERGY_SQS_QUEUE_URL override from env var');
   }
 
+  // Midlayer RabbitMQ overrides (for async payment processing)
+  if (process.env.YATRI_ENERGY_RABBITMQ_URL) {
+    config.yatriEnergy.rabbitmqUrl = process.env.YATRI_ENERGY_RABBITMQ_URL;
+    console.log('[Config] Applied YATRI_ENERGY_RABBITMQ_URL override from env var');
+  }
+  if (process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE) {
+    config.yatriEnergy.rabbitmqExchange = process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE;
+    console.log('[Config] Applied YATRI_ENERGY_RABBITMQ_EXCHANGE override from env var');
+  }
+
   return config;
 }
 
