@@ -441,6 +441,8 @@ export class CitrineOSServer {
           }
 
           // Check Hasura GraphQL Engine connection
+          // NOTE: Hasura check is NON-CRITICAL because Hasura depends on citrine being healthy first.
+          // Making this critical would create a circular dependency deadlock during startup.
           try {
             const hasuraUrl = process.env.HASURA_HEALTH_URL || 'http://graphql-engine:8080/healthz';
             if (hasuraUrl) {
@@ -452,14 +454,14 @@ export class CitrineOSServer {
                 healthStatus.hasura = 'connected';
               } else {
                 healthStatus.hasura = 'disconnected';
-                errors.push(`Hasura returned status ${response.status}`);
+                // Non-critical: don't add to errors
               }
             } else {
               healthStatus.hasura = 'not_configured';
             }
           } catch (error) {
             healthStatus.hasura = 'disconnected';
-            errors.push('Hasura connection failed');
+            // Non-critical: don't add to errors (Hasura starts after citrine)
           }
 
           // Check midlayer RabbitMQ connection (for async payment processing)
