@@ -1,6 +1,6 @@
 # CitrineOS Deployment Guide
 
-**Last Updated**: February 2, 2026
+**Last Updated**: February 16, 2026
 **Purpose**: AWS RDS, S3, and CI/CD deployment configurations
 
 ---
@@ -35,29 +35,33 @@ docker compose up -d
 
 ### Environment Variables
 
-| Variable       | Description                        | Required |
-| -------------- | ---------------------------------- | -------- |
-| `RDS_HOST`     | RDS endpoint hostname              | Yes      |
-| `RDS_USERNAME` | Database username                  | Yes      |
-| `RDS_PASSWORD` | Database password                  | Yes      |
-| `RDS_DATABASE` | Database name                      | Yes      |
-| `RDS_PORT`     | Database port (default: 5432)      | No       |
-| `RDS_SSL`      | Enable SSL (default: true)         | No       |
-| `RDS_POOL_MAX` | Max pool connections (default: 20) | No       |
-| `RDS_POOL_MIN` | Min pool connections (default: 5)  | No       |
+All variables use the `BOOTSTRAP_*` prefix. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the full decision rule.
 
-### Example .env.rds
+| Variable                    | Description                        | Required |
+| --------------------------- | ---------------------------------- | -------- |
+| `BOOTSTRAP_RDS_HOST`        | RDS endpoint hostname              | Yes      |
+| `BOOTSTRAP_RDS_USERNAME`    | Database username                  | Yes      |
+| `BOOTSTRAP_RDS_PASSWORD`    | Database password                  | Yes      |
+| `BOOTSTRAP_RDS_DATABASE`    | Database name                      | Yes      |
+| `BOOTSTRAP_RDS_PORT`        | Database port (default: 5432)      | No       |
+| `BOOTSTRAP_RDS_SSL`         | Enable SSL (default: true)         | No       |
+| `BOOTSTRAP_RDS_POOL_MAX`    | Max pool connections (default: 20) | No       |
+| `BOOTSTRAP_RDS_POOL_MIN`    | Min pool connections (default: 5)  | No       |
+| `BOOTSTRAP_RDS_MAX_RETRIES` | Connection retries (default: 5)    | No       |
+| `BOOTSTRAP_RDS_RETRY_DELAY` | Retry delay in ms (default: 5000)  | No       |
+
+### Example .env
 
 ```bash
-RDS_HOST=your-db.abc123.us-east-1.rds.amazonaws.com
-RDS_PORT=5432
-RDS_DATABASE=citrine
-RDS_USERNAME=citrine
-RDS_PASSWORD=your-secure-password
-RDS_SSL=true
-RDS_POOL_MAX=20
-RDS_POOL_MIN=5
-AWS_REGION=us-east-1
+BOOTSTRAP_RDS_HOST=your-db.abc123.ap-south-1.rds.amazonaws.com
+BOOTSTRAP_RDS_PORT=5432
+BOOTSTRAP_RDS_DATABASE=citrine
+BOOTSTRAP_RDS_USERNAME=citrine
+BOOTSTRAP_RDS_PASSWORD=your-secure-password
+BOOTSTRAP_RDS_SSL=true
+BOOTSTRAP_RDS_POOL_MAX=20
+BOOTSTRAP_RDS_POOL_MIN=5
+BOOTSTRAP_AWS_REGION=ap-south-1
 ```
 
 ### Data Migration
@@ -106,43 +110,41 @@ SSL was added in January 2026:
 
 ### Environment Variables
 
-| Variable                | Description    | Required |
-| ----------------------- | -------------- | -------- |
-| `AWS_REGION`            | AWS region     | Yes      |
-| `S3_BUCKET_NAME`        | S3 bucket name | Yes      |
-| `AWS_ACCESS_KEY_ID`     | AWS access key | Yes\*    |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key | Yes\*    |
+| Variable                          | Description    | Required |
+| --------------------------------- | -------------- | -------- |
+| `BOOTSTRAP_AWS_REGION`            | AWS region     | Yes      |
+| `BOOTSTRAP_S3_BUCKET_NAME`        | S3 bucket name | Yes      |
+| `BOOTSTRAP_AWS_ACCESS_KEY_ID`     | AWS access key | Yes\*    |
+| `BOOTSTRAP_AWS_SECRET_ACCESS_KEY` | AWS secret key | Yes\*    |
 
 \*Not required if running on EC2 with IAM role attached.
 
-### Example .env.s3
+### Example .env (combined RDS + S3)
 
 ```bash
-# RDS Configuration (same as above)
-RDS_HOST=your-db.abc123.ap-south-1.rds.amazonaws.com
-RDS_PORT=5432
-RDS_DATABASE=citrine
-RDS_USERNAME=citrine
-RDS_PASSWORD=your-secure-password
-RDS_SSL=true
+# RDS Configuration
+BOOTSTRAP_RDS_HOST=your-db.abc123.ap-south-1.rds.amazonaws.com
+BOOTSTRAP_RDS_PORT=5432
+BOOTSTRAP_RDS_DATABASE=citrine
+BOOTSTRAP_RDS_USERNAME=citrine
+BOOTSTRAP_RDS_PASSWORD=your-secure-password
+BOOTSTRAP_RDS_SSL=true
+BOOTSTRAP_RDS_POOL_MAX=20
+BOOTSTRAP_RDS_POOL_MIN=5
 
 # S3 Configuration
-AWS_REGION=ap-south-1
-S3_BUCKET_NAME=your-bucket-name
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=your-secret-key
-
-# Connection Pool
-RDS_POOL_MAX=20
-RDS_POOL_MIN=5
+BOOTSTRAP_AWS_REGION=ap-south-1
+BOOTSTRAP_S3_BUCKET_NAME=your-bucket-name
+BOOTSTRAP_AWS_ACCESS_KEY_ID=AKIA...
+BOOTSTRAP_AWS_SECRET_ACCESS_KEY=your-secret-key
 ```
 
 ### How S3 Works
 
 1. CitrineOS checks S3 for `config.json` on startup
-2. If not found, loads default from `Server/src/config/envs/docker.ts`
-3. Saves default config to S3
-4. Future boots load config from S3
+2. If not found, **server fails immediately** (no fallback)
+3. You must upload a valid `config.json` to S3 before first boot
+4. See `Server/src/config/config.json.example` for the template
 
 ### Key Files
 
@@ -208,16 +210,31 @@ docker compose logs -f watchtower
 
 **Endpoint**: `GET /health`
 
-Checks:
+Checks 6 services (Database + RabbitMQ + S3 + Hasura + Midlayer RabbitMQ + Midlayer API):
 
-- Database (RDS): `sequelize.authenticate()`
-- RabbitMQ: `amqplib.connect()` + close
-- S3: `HeadBucketCommand` + `HeadObjectCommand`
+| Check          | Method                                               | Critical?                |
+| -------------- | ---------------------------------------------------- | ------------------------ |
+| Database (RDS) | `sequelize.authenticate()`                           | Yes                      |
+| RabbitMQ       | `amqplib.connect(AMQP_URL)` + close                  | Yes                      |
+| S3             | `HeadBucketCommand` + `HeadObjectCommand`            | Yes                      |
+| Hasura         | `GET http://graphql-engine:8080/healthz`             | No (non-critical)        |
+| Payment Queue  | `amqplib.connect(YATRI_ENERGY_RABBITMQ_URL)` + close | Only when wallet enabled |
+| Midlayer API   | `GET {YATRI_ENERGY_BASE_URL}/health`                 | Only when wallet enabled |
+
+All health check URLs come from `process.env` (bootstrap config).
 
 **Response**:
 
 ```json
-{ "status": "healthy", "database": "connected", "rabbitmq": "connected", "s3": "connected" }
+{
+  "status": "healthy",
+  "database": "connected",
+  "rabbitmq": "connected",
+  "s3": "connected",
+  "hasura": "connected",
+  "paymentQueue": "connected",
+  "midlayerApi": "connected"
+}
 ```
 
 **Docker healthcheck** in `docker-compose.yml`:
@@ -238,7 +255,7 @@ healthcheck:
 ### RDS: "no pg_hba.conf entry... no encryption"
 
 **Cause**: RDS requires SSL but connecting without it.
-**Fix**: Set `RDS_SSL=true` in `.env`.
+**Fix**: Set `BOOTSTRAP_RDS_SSL=true` in `.env`.
 
 ### RDS: "Unknown constraint error" during migration
 
@@ -253,7 +270,7 @@ healthcheck:
 ### S3: "Access Denied"
 
 **Cause**: Invalid AWS credentials or insufficient permissions.
-**Fix**: Verify `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+**Fix**: Verify `BOOTSTRAP_AWS_ACCESS_KEY_ID` and `BOOTSTRAP_AWS_SECRET_ACCESS_KEY`.
 
 ### S3: "NoSuchBucket"
 
@@ -285,15 +302,16 @@ docker exec $(docker ps -qf "ancestor=containrrr/watchtower") /watchtower --run-
 
 ## Docker Compose Files Reference
 
-| File                       | Purpose                                |
-| -------------------------- | -------------------------------------- |
-| `docker-compose.yml`       | Production (RDS + S3 + Watchtower)     |
-| `docker-compose-local.yml` | Local development (PostgreSQL + MinIO) |
-| `docker-compose-rds.yml`   | RDS only (no local DB)                 |
-| `docker-compose-s3.yml`    | RDS + S3 (full cloud)                  |
-| `.env.example`             | Environment template                   |
-| `deploy.Dockerfile`        | Docker build file                      |
-| `hasura.Dockerfile`        | Custom Hasura image                    |
+| File                       | Purpose                                           |
+| -------------------------- | ------------------------------------------------- |
+| `docker-compose.yml`       | Production (RDS + S3 + Watchtower)                |
+| `docker-compose-local.yml` | Local development (PostgreSQL + MinIO)            |
+| `.env.example`             | Bootstrap env var template (`BOOTSTRAP_*` prefix) |
+| `config.json.example`      | System config template (upload to S3)             |
+| `deploy.Dockerfile`        | Docker build file                                 |
+| `hasura.Dockerfile`        | Custom Hasura image                               |
+
+All `.env` variables use the `BOOTSTRAP_*` prefix convention. Docker-compose maps them to container env vars. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the complete variable reference and decision rule.
 
 ---
 

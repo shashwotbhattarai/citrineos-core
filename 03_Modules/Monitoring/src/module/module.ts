@@ -5,7 +5,6 @@
 import {
   AbstractModule,
   AsHandler,
-  BootstrapConfig,
   CallAction,
   ChargingStationSequenceType,
   EventGroup,
@@ -49,7 +48,7 @@ export class MonitoringModule extends AbstractModule {
   /**
    * This is the constructor function that initializes the {@link MonitoringModule}.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains configuration settings for the module.
+   * @param {SystemConfig} config - The `config` contains configuration settings for the module.
    *
    * @param {ICache} [cache] - The cache instance which is shared among the modules & Central System to pass information such as blacklisted actions or boot status.
    *
@@ -74,7 +73,7 @@ export class MonitoringModule extends AbstractModule {
    * represents a generator for ids.
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender?: IMessageSender,
     handler?: IMessageHandler,
@@ -96,10 +95,10 @@ export class MonitoringModule extends AbstractModule {
     this._responses = config.modules.monitoring.responses;
 
     this._deviceModelRepository =
-      deviceModelRepository || new SequelizeDeviceModelRepository(config, this._logger);
+      deviceModelRepository || new SequelizeDeviceModelRepository(config as any, this._logger);
     this._variableMonitoringRepository =
       variableMonitoringRepository ||
-      new SequelizeVariableMonitoringRepository(config, this._logger);
+      new SequelizeVariableMonitoringRepository(config as any, this._logger);
 
     this._deviceModelService = new DeviceModelService(this._deviceModelRepository);
     this._monitoringService = new MonitoringService(
@@ -109,7 +108,7 @@ export class MonitoringModule extends AbstractModule {
 
     this._idGenerator =
       idGenerator ||
-      new IdGenerator(new SequelizeChargingStationSequenceRepository(config, this._logger));
+      new IdGenerator(new SequelizeChargingStationSequenceRepository(config as any, this._logger));
   }
 
   get deviceModelRepository(): IDeviceModelRepository {

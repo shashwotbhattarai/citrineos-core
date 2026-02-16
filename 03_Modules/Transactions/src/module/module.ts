@@ -160,8 +160,10 @@ export class TransactionsModule extends AbstractModule {
    * @param {IAuthorizer} [realTimeAuthorizer] - An optional parameter of type {@link IAuthorizer} which represents
    * a real-time authorizer that can be used to authorize real-time requests.
    */
+  private readonly _bootstrapConfig?: BootstrapConfig;
+
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     fileStorage: IFileStorage,
     sender?: IMessageSender,
@@ -177,6 +179,7 @@ export class TransactionsModule extends AbstractModule {
     ocppMessageRepository?: IOCPPMessageRepository,
     realTimeAuthorizer?: IAuthorizer,
     authorizers?: IAuthorizer[],
+    bootstrapConfig?: BootstrapConfig,
   ) {
     super(
       config,
@@ -187,29 +190,33 @@ export class TransactionsModule extends AbstractModule {
       logger,
     );
 
+    this._bootstrapConfig = bootstrapConfig;
     this._requests = config.modules.transactions.requests;
     this._responses = config.modules.transactions.responses;
 
     this._fileStorage = fileStorage;
 
+    // Note: fallback repo creation requires bootstrapConfig; these paths are only hit
+    // when the module is used standalone without pre-created repositories.
+    const repoConfig = bootstrapConfig!;
     this._transactionEventRepository =
       transactionEventRepository ||
-      new sequelize.SequelizeTransactionEventRepository(config, logger);
+      new sequelize.SequelizeTransactionEventRepository(repoConfig, logger);
     this._authorizeRepository =
-      authorizeRepository || new sequelize.SequelizeAuthorizationRepository(config, logger);
+      authorizeRepository || new sequelize.SequelizeAuthorizationRepository(repoConfig, logger);
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, logger);
+      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(repoConfig, logger);
     this._componentRepository =
       componentRepository ||
-      new SequelizeRepository<Component>(config, Component.MODEL_NAME, logger);
+      new SequelizeRepository<Component>(repoConfig, Component.MODEL_NAME, logger);
     this._locationRepository =
-      locationRepository || new sequelize.SequelizeLocationRepository(config, logger);
+      locationRepository || new sequelize.SequelizeLocationRepository(repoConfig, logger);
     this._tariffRepository =
-      tariffRepository || new sequelize.SequelizeTariffRepository(config, logger);
+      tariffRepository || new sequelize.SequelizeTariffRepository(repoConfig, logger);
     this._reservationRepository =
-      reservationRepository || new sequelize.SequelizeReservationRepository(config, logger);
+      reservationRepository || new sequelize.SequelizeReservationRepository(repoConfig, logger);
     this._ocppMessageRepository =
-      ocppMessageRepository || new SequelizeOCPPMessageRepository(config, this._logger);
+      ocppMessageRepository || new SequelizeOCPPMessageRepository(repoConfig, this._logger);
 
     this._authorizers = authorizers || [];
     this._realTimeAuthorizer =
@@ -229,6 +236,7 @@ export class TransactionsModule extends AbstractModule {
       this._realTimeAuthorizer,
       this._authorizers,
       this._logger,
+      this._bootstrapConfig,
     );
 
     this._statusNotificationService = new StatusNotificationService(
@@ -267,10 +275,10 @@ export class TransactionsModule extends AbstractModule {
     // Exchange: citrineos (direct exchange)
     // Routing Key: payment.settlement
     // Consumer should bind queue 'paymentRequests' to this routing key
-    // BOOTSTRAP: midlayer RabbitMQ config read from process.env (not config.json)
-    const midlayerRabbitMqUrl = process.env.YATRI_ENERGY_RABBITMQ_URL;
-    const midlayerRabbitMqExchange = process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE || 'citrineos';
-    if (midlayerRabbitMqUrl && process.env.YATRI_WALLET_INTEGRATION_ENABLED === 'true') {
+    const midlayerRabbitMqUrl = this._bootstrapConfig?.yatriEnergy?.rabbitmqUrl;
+    const midlayerRabbitMqExchange =
+      this._bootstrapConfig?.yatriEnergy?.rabbitmqExchange || 'citrineos';
+    if (midlayerRabbitMqUrl && this._bootstrapConfig?.yatriEnergy?.enabled) {
       this._paymentRabbitMqPublisher = new PaymentRabbitMqPublisher(
         midlayerRabbitMqUrl,
         midlayerRabbitMqExchange,
@@ -822,8 +830,7 @@ export class TransactionsModule extends AbstractModule {
     const config = this._config as SystemConfig;
 
     // Check if Yatri Energy integration is enabled
-    // Bootstrap value read from process.env (not config.json)
-    if (process.env.YATRI_WALLET_INTEGRATION_ENABLED !== 'true') {
+    if (!this._bootstrapConfig?.yatriEnergy?.enabled) {
       this._logger.debug(
         'Yatri Energy wallet integration is disabled, skipping payment settlement',
       );

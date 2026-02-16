@@ -1,6 +1,6 @@
 # CitrineOS Core - CSMS Backend Documentation
 
-**Last Updated**: February 2, 2026
+**Last Updated**: February 16, 2026
 **For Claude**: This is the entry point. Reference supporting docs for details.
 
 > **ECOSYSTEM CONTEXT**: See [../CLAUDE.md](../CLAUDE.md) for complete ecosystem overview including yatri-energy-dash-frontend, yatri-energy-app, and citrineos-payment.
@@ -13,6 +13,7 @@
 
 | Document                                                         | Purpose               | When to Use              |
 | ---------------------------------------------------------------- | --------------------- | ------------------------ |
+| [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md)                   | Config architecture   | Bootstrap vs System      |
 | [INDEX.md](./INDEX.md)                                           | Navigation            | Find the right doc       |
 | [GLOSSARY.md](./GLOSSARY.md)                                     | Terminology           | Clarify idTag vs IdToken |
 | [STATUS.md](./STATUS.md)                                         | Implementation status | Know what's working      |
@@ -118,13 +119,21 @@ The HTTP API (port 8080) supports three authentication providers, configured via
 
 Validates requests using a shared secret sent via the `X-API-Key` header. Designed for service-to-service communication where only the mid-layer (yatri-energy-backend) calls CitrineOS APIs.
 
-**Config** (`config.json`):
+**Config** (`config.json`) — just enables the auth type (boolean flag):
 
 ```json
 "authProvider": {
-  "apiKey": "your-strong-secret-key-here"
+  "apiKey": true
 }
 ```
+
+**Secret** (`.env`) — the actual key is a bootstrap field:
+
+```bash
+BOOTSTRAP_CITRINEOS_API_KEY=your-strong-secret-key-here
+```
+
+The server reads the secret from `process.env.CITRINEOS_API_KEY` at startup. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the full bootstrap vs system split.
 
 **Client usage** (mid-layer sends this header with every request):
 
@@ -258,14 +267,18 @@ docker compose ps
 | PostgreSQL     | localhost:5432             | citrine/citrine       |
 | MinIO S3       | http://localhost:9001      | minioadmin/minioadmin |
 
-### Environment Files
+### Environment & Config Files
 
-| File                       | Purpose                             |
-| -------------------------- | ----------------------------------- |
-| `.env`                     | Production credentials (gitignored) |
-| `.env.example`             | Template for new deployments        |
-| `docker-compose.yml`       | Production (RDS + S3 + Watchtower)  |
-| `docker-compose-local.yml` | Local development                   |
+| File                       | Purpose                                                 |
+| -------------------------- | ------------------------------------------------------- |
+| `.env`                     | Bootstrap config — secrets, infrastructure (gitignored) |
+| `.env.example`             | Template with all `BOOTSTRAP_*` variables               |
+| `config.json` (in S3)      | System config — application behavior                    |
+| `config.json.example`      | Template for system config                              |
+| `docker-compose.yml`       | Production (RDS + S3 + Watchtower)                      |
+| `docker-compose-local.yml` | Local development                                       |
+
+All `.env` variables use the `BOOTSTRAP_*` prefix. Docker-compose maps them to container env vars. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the full decision rule and variable reference.
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed AWS RDS, S3, and CI/CD setup.
 
@@ -316,17 +329,24 @@ CitrineOS operates as a **black box CSMS**. Yatri Energy Backend handles wallet 
 - `03_Modules/Transactions/src/module/module.ts:734-735` - Transaction settlement
 - `02_Util/src/yatri/YatriEnergyClient.ts` - HTTP client for wallet APIs
 
-**Configuration**:
+**Configuration** (split between bootstrap and system):
 
-```typescript
-yatriEnergy: {
-  baseUrl: 'http://13.235.140.91/dev',
-  apiKey: process.env.YATRI_ENERGY_API_KEY,
-  timeout: 10000
+```bash
+# Bootstrap (.env) — secrets & infrastructure
+BOOTSTRAP_YATRI_ENERGY_BASE_URL=http://13.235.140.91/dev
+BOOTSTRAP_YATRI_ENERGY_API_KEY=your-key
+BOOTSTRAP_YATRI_WALLET_INTEGRATION_ENABLED=true
+```
+
+```json
+// System (config.json) — application behavior only
+"yatriEnergy": {
+  "timeout": 10000,
+  "minimumBalance": 100.0
 }
 ```
 
-See [YATRI_WALLET_INTEGRATION.md](./YATRI_WALLET_INTEGRATION.md) for detailed flow.
+See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the full split. See [YATRI_WALLET_INTEGRATION.md](./YATRI_WALLET_INTEGRATION.md) for detailed flow.
 
 ---
 
@@ -334,29 +354,38 @@ See [YATRI_WALLET_INTEGRATION.md](./YATRI_WALLET_INTEGRATION.md) for detailed fl
 
 **Endpoint**: `GET /health`
 
+Checks 6 services: Database, RabbitMQ, S3, Hasura, Midlayer RabbitMQ (payment queue), Midlayer API.
+
 ```json
 // Healthy
-{ "status": "healthy", "database": "connected", "rabbitmq": "connected", "s3": "connected" }
-
-// Unhealthy
-{ "status": "unhealthy", "database": "connected", "rabbitmq": "disconnected", "s3": "connected", "errors": ["RabbitMQ connection failed"] }
+{
+  "status": "healthy",
+  "database": "connected",
+  "rabbitmq": "connected",
+  "s3": "connected",
+  "hasura": "connected",
+  "paymentQueue": "connected",
+  "midlayerApi": "connected"
+}
 ```
 
-Used by Docker healthcheck to determine container readiness.
+Hasura, paymentQueue, and midlayerApi are conditional — they show `not_configured` when wallet integration is disabled. All health check URLs come from `process.env` (bootstrap config). Used by Docker healthcheck to determine container readiness.
 
 ---
 
 ## Key Code Locations
 
-| Component             | Path                                                       |
-| --------------------- | ---------------------------------------------------------- |
-| OCPP Message Handlers | `03_Modules/*/src/module/module.ts`                        |
-| Transaction Service   | `03_Modules/Transactions/src/module/TransactionService.ts` |
-| EVDriver APIs         | `03_Modules/EVDriver/src/module/1.6/MessageApi.ts`         |
-| Data Models           | `01_Data/src/layers/sequelize/model/`                      |
-| Repositories          | `01_Data/src/layers/sequelize/repository/`                 |
-| Configuration         | `Server/src/config/envs/`                                  |
-| WebSocket Config      | `Server/src/config/envs/*.ts` → `websocketServers`         |
+| Component             | Path                                                         |
+| --------------------- | ------------------------------------------------------------ |
+| OCPP Message Handlers | `03_Modules/*/src/module/module.ts`                          |
+| Transaction Service   | `03_Modules/Transactions/src/module/TransactionService.ts`   |
+| EVDriver APIs         | `03_Modules/EVDriver/src/module/1.6/MessageApi.ts`           |
+| Data Models           | `01_Data/src/layers/sequelize/model/`                        |
+| Repositories          | `01_Data/src/layers/sequelize/repository/`                   |
+| Config Loader         | `Server/src/config/config.loader.ts`                         |
+| Bootstrap Config      | `00_Base/src/config/bootstrap.config.ts`                     |
+| Config Schema (Zod)   | `00_Base/src/config/types.ts`                                |
+| WebSocket Config      | S3 `config.json` → `util.networkConnection.websocketServers` |
 
 ---
 
@@ -415,6 +444,7 @@ git merge upstream/main
 
 ### Core Guides
 
+- [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) - Bootstrap (.env) vs System (config.json) architecture
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [API_REFERENCE.md](./API_REFERENCE.md) - All API endpoints
 - [GOING_TO_PRODUCTION_V2.md](./GOING_TO_PRODUCTION_V2.md) - Production deployment

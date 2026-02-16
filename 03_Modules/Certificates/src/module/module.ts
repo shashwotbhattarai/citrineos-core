@@ -18,7 +18,6 @@ import {
   OCPP2_0_1_CallAction,
   OCPPVersion,
   SystemConfig,
-  BootstrapConfig,
 } from '@citrineos/base';
 import { Op } from 'sequelize';
 import {
@@ -73,7 +72,7 @@ export class CertificatesModule extends AbstractModule {
   /**
    * This is the constructor function that initializes the {@link CertificatesModule}.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains configuration settings for the module.
+   * @param {SystemConfig} config - The `config` contains configuration settings for the module.
    *
    * @param {ICache} [cache] - The cache instance which is shared among the modules & Central System to pass information such as blacklisted actions or boot status.
    *
@@ -101,7 +100,7 @@ export class CertificatesModule extends AbstractModule {
    * type {@link CertificateAuthorityService} which handles certificate authority operations.
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender: IMessageSender,
     handler: IMessageHandler,
@@ -124,18 +123,18 @@ export class CertificatesModule extends AbstractModule {
     this._responses = config.modules.certificates?.responses ?? [];
 
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, logger);
+      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config as any, logger);
     this._certificateRepository =
-      certificateRepository || new sequelize.SequelizeCertificateRepository(config, logger);
+      certificateRepository || new sequelize.SequelizeCertificateRepository(config as any, logger);
     this._installedCertificateRepository = new sequelize.SequelizeInstalledCertificateRepository(
-      config,
+      config as any,
       logger,
     );
     this._locationRepository =
-      locationRepository || new sequelize.SequelizeLocationRepository(config, logger);
+      locationRepository || new sequelize.SequelizeLocationRepository(config as any, logger);
 
     this._certificateAuthorityService =
-      certificateAuthorityService || new CertificateAuthorityService(config, this._logger);
+      certificateAuthorityService || new CertificateAuthorityService(config as any, this._logger);
   }
 
   get certificateAuthorityService(): CertificateAuthorityService {

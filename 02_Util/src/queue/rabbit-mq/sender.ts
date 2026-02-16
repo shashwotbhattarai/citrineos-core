@@ -38,15 +38,26 @@ export class RabbitMqSender extends AbstractMessageSender implements IMessageSen
   private _abortReconnectController?: AbortController;
   private _circuitBreaker: CircuitBreaker;
   private _reconnectInterval?: NodeJS.Timeout;
+  private readonly _amqpUrl: string;
+  private readonly _amqpExchange: string;
 
   /**
    * Constructor for the class.
    *
    * @param {SystemConfig} config - The system configuration.
    * @param {Logger<ILogObj>} [logger] - The logger object.
+   * @param {CircuitBreaker} [circuitBreaker] - Optional circuit breaker.
+   * @param {{ url: string; exchange: string }} [amqpConfig] - AMQP connection config. Falls back to process.env.
    */
-  constructor(config: SystemConfig, logger?: Logger<ILogObj>, circuitBreaker?: CircuitBreaker) {
+  constructor(
+    config: SystemConfig,
+    logger?: Logger<ILogObj>,
+    circuitBreaker?: CircuitBreaker,
+    amqpConfig?: { url: string; exchange: string },
+  ) {
     super(config, logger);
+    this._amqpUrl = amqpConfig?.url || process.env.AMQP_URL || '';
+    this._amqpExchange = amqpConfig?.exchange ?? process.env.AMQP_EXCHANGE ?? '';
     this._circuitBreaker = circuitBreaker ?? new CircuitBreaker();
     this._circuitBreaker.onStateChange(this._onCircuitBreakerStateChange.bind(this));
     this._connectWithRetry()
@@ -123,8 +134,7 @@ export class RabbitMqSender extends AbstractMessageSender implements IMessageSen
       return { success: false, payload: 'Message payload must be set' };
     }
 
-    // BOOTSTRAP: AMQP exchange read from process.env (not config.json)
-    const exchange = process.env.AMQP_EXCHANGE as string;
+    const exchange = this._amqpExchange;
     if (!this._channel) {
       throw new Error('RabbitMQ is down: cannot unsubscribe.');
     }
@@ -174,8 +184,7 @@ export class RabbitMqSender extends AbstractMessageSender implements IMessageSen
    * @return {Promise<amqplib.Channel>} A promise that resolves to the AMQP channel.
    */
   protected async _connectWithRetry(abortSignal?: AbortSignal): Promise<amqplib.Channel> {
-    // BOOTSTRAP: AMQP URL read from process.env (not config.json)
-    const url = process.env.AMQP_URL;
+    const url = this._amqpUrl;
     if (!url) {
       throw new Error('RabbitMQ URL is not configured (AMQP_URL env var missing)');
     }

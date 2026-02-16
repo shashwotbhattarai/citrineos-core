@@ -5,7 +5,6 @@
 import {
   AbstractModule,
   AsHandler,
-  BootstrapConfig,
   CallAction,
   ChargingStationSequenceType,
   EventGroup,
@@ -58,7 +57,7 @@ export class SmartChargingModule extends AbstractModule {
   /**
    * This is the constructor function that initializes the {@link SmartChargingModule}.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains configuration settings for the module.
+   * @param {SystemConfig} config - The `config` contains configuration settings for the module.
    *
    * @param {ICache} [cache] - The cache instance which is shared among the modules & Central System to pass information such as blacklisted actions or boot status.
    *
@@ -90,7 +89,7 @@ export class SmartChargingModule extends AbstractModule {
    * represents a generator for ids.
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender?: IMessageSender,
     handler?: IMessageHandler,
@@ -115,19 +114,20 @@ export class SmartChargingModule extends AbstractModule {
 
     this._transactionEventRepository =
       transactionEventRepository ||
-      new sequelize.SequelizeTransactionEventRepository(config, this._logger);
+      new sequelize.SequelizeTransactionEventRepository(config as any, this._logger);
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, this._logger);
+      deviceModelRepository ||
+      new sequelize.SequelizeDeviceModelRepository(config as any, this._logger);
     this._chargingProfileRepository =
       chargingProfileRepository ||
-      new sequelize.SequelizeChargingProfileRepository(config, this._logger);
+      new sequelize.SequelizeChargingProfileRepository(config as any, this._logger);
 
     this._smartChargingService =
       smartChargingService || new InternalSmartCharging(this._chargingProfileRepository);
 
     this._idGenerator =
       idGenerator ||
-      new IdGenerator(new SequelizeChargingStationSequenceRepository(config, this._logger));
+      new IdGenerator(new SequelizeChargingStationSequenceRepository(config as any, this._logger));
   }
 
   get transactionEventRepository(): ITransactionEventRepository {

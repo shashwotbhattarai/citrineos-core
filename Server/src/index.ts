@@ -93,7 +93,8 @@ export class CitrineOSServer {
   /**
    * Fields
    */
-  private readonly _config: BootstrapConfig & SystemConfig;
+  private readonly _bootstrapConfig: BootstrapConfig;
+  private readonly _systemConfig: SystemConfig;
   private readonly _logger: Logger<ILogObj>;
   private readonly _server: FastifyInstance;
   private readonly _cache: ICache;
@@ -135,13 +136,15 @@ export class CitrineOSServer {
     cache?: ICache,
     _fileStorage?: IFileStorage,
   ) {
-    // BOOTSTRAP: AMQP config now comes from process.env (AMQP_URL, AMQP_EXCHANGE)
-    if (!process.env.AMQP_URL) {
-      throw new Error('AMQP_URL environment variable is required for RabbitMQ configuration.');
+    if (!bootstrapConfig.amqp?.url) {
+      throw new Error(
+        'AMQP URL is required for RabbitMQ configuration (AMQP_URL env var missing).',
+      );
     }
 
     this.appName = appName;
-    this._config = { ...bootstrapConfig, ...systemConfig };
+    this._bootstrapConfig = bootstrapConfig;
+    this._systemConfig = systemConfig;
     this._server = server || fastify().withTypeProvider<JsonSchemaToTsProvider>();
 
     // enable cors
@@ -171,7 +174,7 @@ export class CitrineOSServer {
     this.initHealthCheck();
 
     // Add Directus Message API flow creation if enabled
-    if (this._config.fileAccess.directus?.generateFlows) {
+    if (this._bootstrapConfig.fileAccess.directus?.generateFlows) {
       const directusUtil = ConfigStoreFactory.getInstance() as DirectusUtil;
       this._server.addHook('onRoute', (routeOptions: RouteOptions) => {
         directusUtil!
@@ -260,7 +263,8 @@ export class CitrineOSServer {
   }
 
   protected async _syncWebsocketConfig() {
-    for (const websocketServerConfig of this._config.util.networkConnection.websocketServers) {
+    for (const websocketServerConfig of this._systemConfig.util.networkConnection
+      .websocketServers) {
       const [serverNetworkProfile] = await ServerNetworkProfile.findOrBuild({
         where: {
           id: websocketServerConfig.id,
@@ -271,7 +275,7 @@ export class CitrineOSServer {
       serverNetworkProfile.port = websocketServerConfig.port;
       serverNetworkProfile.pingInterval = websocketServerConfig.pingInterval;
       serverNetworkProfile.protocol = websocketServerConfig.protocol;
-      serverNetworkProfile.messageTimeout = this._config.maxCallLengthSeconds;
+      serverNetworkProfile.messageTimeout = this._systemConfig.maxCallLengthSeconds;
       serverNetworkProfile.securityProfile = websocketServerConfig.securityProfile;
       serverNetworkProfile.allowUnknownChargingStations =
         websocketServerConfig.allowUnknownChargingStations;
@@ -288,11 +292,23 @@ export class CitrineOSServer {
   }
 
   protected _createSender(): IMessageSender {
-    return new RabbitMqSender(this._config, this._logger);
+    return new RabbitMqSender(
+      this._systemConfig,
+      this._logger,
+      undefined,
+      this._bootstrapConfig.amqp,
+    );
   }
 
   protected _createHandler(): IMessageHandler {
-    return new RabbitMqReceiver(this._config, this._logger);
+    return new RabbitMqReceiver(
+      this._systemConfig,
+      this._logger,
+      undefined,
+      undefined,
+      undefined,
+      this._bootstrapConfig.amqp,
+    );
   }
 
   private initHealthCheck() {
@@ -339,7 +355,7 @@ export class CitrineOSServer {
       ],
     };
 
-    const config = this._config;
+    const bootstrapConfig = this._bootstrapConfig;
 
     // Use fastify.register() for proper Swagger integration
     this._server.register(async (fastify) => {
@@ -363,8 +379,7 @@ export class CitrineOSServer {
           },
         },
         async (_request, reply) => {
-          // BOOTSTRAP: wallet enabled flag read from process.env (not config.json)
-          const walletEnabled = process.env.YATRI_WALLET_INTEGRATION_ENABLED === 'true';
+          const walletEnabled = bootstrapConfig.yatriEnergy.enabled;
           const healthStatus: {
             status: string;
             database: string;
@@ -389,7 +404,7 @@ export class CitrineOSServer {
 
           // Check database connection
           try {
-            await sequelize.DefaultSequelizeInstance.getInstance(config).authenticate();
+            await sequelize.DefaultSequelizeInstance.getInstance(bootstrapConfig).authenticate();
             healthStatus.database = 'connected';
           } catch (error) {
             healthStatus.database = 'disconnected';
@@ -398,8 +413,7 @@ export class CitrineOSServer {
 
           // Check RabbitMQ connection
           try {
-            // BOOTSTRAP: AMQP URL read from process.env (not config.json)
-            const amqpUrl = process.env.AMQP_URL;
+            const amqpUrl = bootstrapConfig.amqp.url;
             if (amqpUrl) {
               const connection = await amqplib.connect(amqpUrl);
               await connection.close();
@@ -414,8 +428,8 @@ export class CitrineOSServer {
 
           // Check S3 connection (bucket exists + config file exists)
           try {
-            const s3Config = config.fileAccess.s3;
-            if (config.fileAccess.type === 's3' && s3Config) {
+            const s3Config = bootstrapConfig.fileAccess.s3;
+            if (bootstrapConfig.fileAccess.type === 's3' && s3Config) {
               const s3Client = new S3Client({
                 ...(s3Config.endpoint ? { endpoint: s3Config.endpoint } : {}),
                 ...(s3Config.region ? { region: s3Config.region } : {}),
@@ -430,8 +444,8 @@ export class CitrineOSServer {
                   : {}),
               });
 
-              const bucketName = config.configDir || s3Config.defaultBucketName;
-              const configFileName = config.configFileName || 'config.json';
+              const bucketName = bootstrapConfig.configDir || s3Config.defaultBucketName;
+              const configFileName = bootstrapConfig.configFileName || 'config.json';
 
               // Check bucket exists
               await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
@@ -454,7 +468,8 @@ export class CitrineOSServer {
           // NOTE: Hasura check is NON-CRITICAL because Hasura depends on citrine being healthy first.
           // Making this critical would create a circular dependency deadlock during startup.
           try {
-            const hasuraUrl = process.env.HASURA_HEALTH_URL || 'http://graphql-engine:8080/healthz';
+            const hasuraUrl =
+              bootstrapConfig.hasuraHealthUrl || 'http://graphql-engine:8080/healthz';
             if (hasuraUrl) {
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -477,8 +492,7 @@ export class CitrineOSServer {
           // Check midlayer RabbitMQ connection (for async payment processing)
           // If wallet integration is enabled, midlayer RabbitMQ MUST be configured and connected
           try {
-            // BOOTSTRAP: midlayer RabbitMQ URL read from process.env (not config.json)
-            const midlayerRabbitMqUrl = process.env.YATRI_ENERGY_RABBITMQ_URL;
+            const midlayerRabbitMqUrl = bootstrapConfig.yatriEnergy.rabbitmqUrl;
 
             if (midlayerRabbitMqUrl) {
               const connection = await amqplib.connect(midlayerRabbitMqUrl);
@@ -500,8 +514,7 @@ export class CitrineOSServer {
           // Check midlayer API reachability (yatri-energy-backend /health)
           // Only checked if wallet integration is enabled
           try {
-            // BOOTSTRAP: midlayer API base URL read from process.env (not config.json)
-            const midlayerBaseUrl = process.env.YATRI_ENERGY_BASE_URL;
+            const midlayerBaseUrl = bootstrapConfig.yatriEnergy.baseUrl;
 
             if (midlayerBaseUrl && walletEnabled) {
               const healthUrl = midlayerBaseUrl.replace(/\/+$/, '') + '/health';
@@ -561,12 +574,12 @@ export class CitrineOSServer {
   }
 
   private initLogger() {
-    const isCloud = process.env.DEPLOYMENT_TARGET === 'cloud';
+    const isCloud = this._bootstrapConfig.deploymentTarget === 'cloud';
 
     const loggerSettings = {
       name: 'CitrineOS Logger',
-      minLevel: this._config.logLevel,
-      hideLogPositionForProduction: this._config.env === 'production',
+      minLevel: this._systemConfig.logLevel,
+      hideLogPositionForProduction: this._systemConfig.env === 'production',
       type: isCloud ? ('json' as const) : ('pretty' as const),
     };
 
@@ -580,11 +593,11 @@ export class CitrineOSServer {
   private initCache(cache?: ICache): ICache {
     return (
       cache ||
-      (this._config.util.cache.redis
+      (this._systemConfig.util.cache.redis
         ? new RedisCache({
             socket: {
-              host: this._config.util.cache.redis.host,
-              port: this._config.util.cache.redis.port,
+              host: this._systemConfig.util.cache.redis.host,
+              port: this._systemConfig.util.cache.redis.port,
             },
           })
         : new MemoryCache())
@@ -592,8 +605,8 @@ export class CitrineOSServer {
   }
 
   private async initSwagger() {
-    if (this._config.util.swagger) {
-      await initSwagger(this._config, this._server);
+    if (this._systemConfig.util.swagger) {
+      await initSwagger(this._systemConfig, this._server);
     }
   }
 
@@ -614,7 +627,7 @@ export class CitrineOSServer {
           '/health', // Health check endpoint
           '/docs', // API documentation
         ],
-        debug: this._config.logLevel <= 2, // Enable debug logs in dev mode
+        debug: this._systemConfig.logLevel <= 2, // Enable debug logs in dev mode
       },
       logger: this._logger,
     });
@@ -623,16 +636,16 @@ export class CitrineOSServer {
   private initNetworkConnection() {
     this._authenticator = new Authenticator(
       new UnknownStationFilter(
-        new sequelize.SequelizeLocationRepository(this._config, this._logger),
+        new sequelize.SequelizeLocationRepository(this._bootstrapConfig, this._logger),
         this._logger,
       ),
       new ConnectedStationFilter(this._cache, this._logger),
       new NetworkProfileFilter(
-        new sequelize.SequelizeDeviceModelRepository(this._config, this._logger),
+        new sequelize.SequelizeDeviceModelRepository(this._bootstrapConfig, this._logger),
         this._logger,
       ),
       new BasicAuthenticationFilter(
-        new sequelize.SequelizeDeviceModelRepository(this._config, this._logger),
+        new sequelize.SequelizeDeviceModelRepository(this._bootstrapConfig, this._logger),
         this._logger,
       ),
       this._logger,
@@ -644,7 +657,7 @@ export class CitrineOSServer {
     );
 
     const router = new MessageRouterImpl(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -657,7 +670,7 @@ export class CitrineOSServer {
     );
 
     this._networkConnection = new WebsocketNetworkConnection(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._authenticator,
       router,
@@ -666,8 +679,8 @@ export class CitrineOSServer {
 
     this.apis.push(new AdminApi(router, this._server, this._logger));
 
-    this.host = this._config.centralSystem.host;
-    this.port = this._config.centralSystem.port;
+    this.host = this._systemConfig.centralSystem.host;
+    this.port = this._systemConfig.centralSystem.port;
   }
 
   private async initHandlersAndAddModule(module: AbstractModule) {
@@ -676,55 +689,57 @@ export class CitrineOSServer {
   }
 
   private async initAllModules() {
-    if (this._config.modules.certificates) {
+    if (this._systemConfig.modules.certificates) {
       await this.initCertificatesModule();
     }
 
-    if (this._config.modules.configuration) {
+    if (this._systemConfig.modules.configuration) {
       await this.initConfigurationModule();
     }
 
-    if (this._config.modules.evdriver) {
+    if (this._systemConfig.modules.evdriver) {
       await this.initEVDriverModule();
     }
 
-    if (this._config.modules.monitoring) {
+    if (this._systemConfig.modules.monitoring) {
       await this.initMonitoringModule();
     }
 
-    if (this._config.modules.reporting) {
+    if (this._systemConfig.modules.reporting) {
       await this.initReportingModule();
     }
 
-    if (this._config.modules.smartcharging) {
+    if (this._systemConfig.modules.smartcharging) {
       await this.initSmartChargingModule();
     }
 
-    if (this._config.modules.transactions) {
+    if (this._systemConfig.modules.transactions) {
       await this.initTransactionsModule();
     }
 
     // TODO: take actions to make sure module has correct subscriptions and log proof
     if (this.eventGroup !== EventGroup.All) {
-      this.host = this._config.centralSystem.host as string;
-      this.port = this._config.centralSystem.port as number;
+      this.host = this._systemConfig.centralSystem.host as string;
+      this.port = this._systemConfig.centralSystem.port as number;
     }
   }
 
   private initApiAuthProvider(): IApiAuthProvider {
-    this._logger.info('Initializing API authentication provider,', this._config.util.authProvider);
-    if (this._config.util.authProvider.oidc) {
-      return new OIDCAuthProvider(this._config.util.authProvider.oidc, this._logger);
-    } else if (this._config.util.authProvider.apiKey) {
-      // BOOTSTRAP: API key secret read from process.env (not config.json)
-      const apiKey = process.env.CITRINEOS_API_KEY;
+    this._logger.info(
+      'Initializing API authentication provider,',
+      this._systemConfig.util.authProvider,
+    );
+    if (this._systemConfig.util.authProvider.oidc) {
+      return new OIDCAuthProvider(this._systemConfig.util.authProvider.oidc, this._logger);
+    } else if (this._systemConfig.util.authProvider.apiKey) {
+      const apiKey = this._bootstrapConfig.apiKey;
       if (!apiKey) {
         throw new Error(
           'CITRINEOS_API_KEY environment variable is required when apiKey auth is enabled',
         );
       }
       return new ApiKeyAuthProvider(apiKey, this._logger);
-    } else if (this._config.util.authProvider.localByPass) {
+    } else if (this._systemConfig.util.authProvider.localByPass) {
       return new LocalBypassAuthProvider(this._logger);
     } else {
       throw new Error('No valid API authentication provider configured');
@@ -733,7 +748,7 @@ export class CitrineOSServer {
 
   private async initCertificatesModule() {
     const module = new CertificatesModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -750,7 +765,7 @@ export class CitrineOSServer {
         this._server,
         this._fileStorage,
         this._networkConnection!,
-        this._config.util.networkConnection.websocketServers,
+        this._systemConfig.util.networkConnection.websocketServers,
         this._logger,
       ),
     );
@@ -758,7 +773,7 @@ export class CitrineOSServer {
 
   private async initConfigurationModule() {
     const module = new ConfigurationModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -781,7 +796,7 @@ export class CitrineOSServer {
 
   private async initEVDriverModule() {
     const module = new EVDriverModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -799,6 +814,7 @@ export class CitrineOSServer {
       this._realTimeAuthorizer,
       [],
       this._idGenerator,
+      this._bootstrapConfig,
     );
     await this.initHandlersAndAddModule(module);
     this.apis.push(
@@ -810,7 +826,7 @@ export class CitrineOSServer {
 
   private async initMonitoringModule() {
     const module = new MonitoringModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -828,7 +844,7 @@ export class CitrineOSServer {
 
   private async initReportingModule() {
     const module = new ReportingModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -843,7 +859,7 @@ export class CitrineOSServer {
 
   private async initSmartChargingModule() {
     const module = new SmartChargingModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._createSender(),
       this._createHandler(),
@@ -860,7 +876,7 @@ export class CitrineOSServer {
 
   private async initTransactionsModule() {
     const module = new TransactionsModule(
-      this._config,
+      this._systemConfig,
       this._cache,
       this._fileStorage,
       this._createSender(),
@@ -875,6 +891,8 @@ export class CitrineOSServer {
       this._repositoryStore.reservationRepository,
       this._repositoryStore.ocppMessageRepository,
       this._realTimeAuthorizer,
+      undefined, // authorizers
+      this._bootstrapConfig,
     );
     await this.initHandlersAndAddModule(module);
     this.apis.push(
@@ -927,11 +945,11 @@ export class CitrineOSServer {
 
   private initRepositoryStore() {
     this._sequelizeInstance = sequelize.DefaultSequelizeInstance.getInstance(
-      this._config,
+      this._bootstrapConfig,
       this._logger,
     );
     this._repositoryStore = new RepositoryStore(
-      this._config,
+      this._bootstrapConfig,
       this._logger,
       this._sequelizeInstance,
     );
@@ -942,7 +960,10 @@ export class CitrineOSServer {
   }
 
   private initCertificateAuthorityService() {
-    this._certificateAuthorityService = new CertificateAuthorityService(this._config, this._logger);
+    this._certificateAuthorityService = new CertificateAuthorityService(
+      this._systemConfig,
+      this._logger,
+    );
   }
 
   private initSmartChargingService() {
@@ -954,7 +975,7 @@ export class CitrineOSServer {
   private initRealTimeAuthorizer() {
     this._realTimeAuthorizer = new RealTimeAuthorizer(
       this._repositoryStore.locationRepository,
-      this._config,
+      this._systemConfig,
       this._logger,
     );
   }

@@ -141,20 +141,19 @@ export class EVDriverOcpp16Api
    */
   private async _checkYatriWalletBalance(idToken: string, tenantId: number): Promise<boolean> {
     try {
-      // Get system configuration to check if Yatri Energy integration is enabled
       const config = this._module.config as SystemConfig;
-      // Bootstrap values read from process.env (not config.json)
-      if (process.env.YATRI_WALLET_INTEGRATION_ENABLED !== 'true') {
+      const bootstrapConfig = this._module.bootstrapConfig;
+      if (!bootstrapConfig?.yatriEnergy?.enabled) {
         this._logger.debug('Yatri Energy wallet integration is disabled, skipping wallet check');
         return true; // Skip wallet check if integration is disabled
       }
 
       // Create Yatri Energy client
-      // baseUrl and apiKey are bootstrap (process.env), timeout and minimumBalance are system config (config.json)
+      // baseUrl and apiKey from bootstrapConfig, timeout and minimumBalance from systemConfig
       const yatriClient = new YatriEnergyClient(
-        process.env.YATRI_ENERGY_BASE_URL as string,
+        bootstrapConfig.yatriEnergy.baseUrl as string,
         config.yatriEnergy.timeout,
-        process.env.YATRI_ENERGY_API_KEY as string,
+        bootstrapConfig.yatriEnergy.apiKey as string,
         this._logger,
       );
 
