@@ -133,7 +133,7 @@ Validates requests using a shared secret sent via the `X-API-Key` header. Design
 BOOTSTRAP_CITRINEOS_API_KEY=your-strong-secret-key-here
 ```
 
-The server reads the secret from `process.env.CITRINEOS_API_KEY` at startup. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the full bootstrap vs system split.
+The server reads the secret from `bootstrapConfig.apiKey` (loaded from `process.env.CITRINEOS_API_KEY` at startup). See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for the full bootstrap vs system split.
 
 **Client usage** (mid-layer sends this header with every request):
 
@@ -159,6 +159,20 @@ X-API-Key: your-strong-secret-key-here
 ---
 
 ## Critical Fixes Reference
+
+### Config Separation — No More Secret Leaks (Feb 16, 2026)
+
+**Problem**: `Server/src/index.ts` merged `{ ...bootstrapConfig, ...systemConfig }` into one object. All `GET /data/*/systemConfig` endpoints leaked DB credentials, S3 keys, AMQP URLs, and API secrets. `PUT` also wrote secrets to S3 config.json.
+
+**Fix**: Configs are now stored and passed separately. `_bootstrapConfig` and `_systemConfig` are never merged.
+
+- All modules receive `SystemConfig` only (via `AbstractModule._config`)
+- Transactions and EVDriver also receive `BootstrapConfig` for wallet integration
+- RabbitMQ sender/receiver receive AMQP config via constructor param
+- Health check reads from `_bootstrapConfig` instead of `process.env`
+- All `process.env` reads for bootstrap values replaced with typed `BootstrapConfig` fields
+
+**17 files changed**. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) for full details and debugging guide.
 
 ### IdToken Case Normalization (Jan 15, 2026)
 
@@ -369,23 +383,28 @@ Checks 6 services: Database, RabbitMQ, S3, Hasura, Midlayer RabbitMQ (payment qu
 }
 ```
 
-Hasura, paymentQueue, and midlayerApi are conditional — they show `not_configured` when wallet integration is disabled. All health check URLs come from `process.env` (bootstrap config). Used by Docker healthcheck to determine container readiness.
+Hasura, paymentQueue, and midlayerApi are conditional — they show `not_configured` when wallet integration is disabled. All health check URLs come from `bootstrapConfig` (loaded from `process.env` at startup). Used by Docker healthcheck to determine container readiness.
 
 ---
 
 ## Key Code Locations
 
-| Component             | Path                                                         |
-| --------------------- | ------------------------------------------------------------ |
-| OCPP Message Handlers | `03_Modules/*/src/module/module.ts`                          |
-| Transaction Service   | `03_Modules/Transactions/src/module/TransactionService.ts`   |
-| EVDriver APIs         | `03_Modules/EVDriver/src/module/1.6/MessageApi.ts`           |
-| Data Models           | `01_Data/src/layers/sequelize/model/`                        |
-| Repositories          | `01_Data/src/layers/sequelize/repository/`                   |
-| Config Loader         | `Server/src/config/config.loader.ts`                         |
-| Bootstrap Config      | `00_Base/src/config/bootstrap.config.ts`                     |
-| Config Schema (Zod)   | `00_Base/src/config/types.ts`                                |
-| WebSocket Config      | S3 `config.json` → `util.networkConnection.websocketServers` |
+| Component             | Path                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Server Entry Point    | `Server/src/index.ts` — stores `_bootstrapConfig` + `_systemConfig` separately     |
+| OCPP Message Handlers | `03_Modules/*/src/module/module.ts`                                                |
+| Transaction Service   | `03_Modules/Transactions/src/module/TransactionService.ts`                         |
+| EVDriver APIs         | `03_Modules/EVDriver/src/module/1.6/MessageApi.ts`                                 |
+| Data Models           | `01_Data/src/layers/sequelize/model/`                                              |
+| Repositories          | `01_Data/src/layers/sequelize/repository/`                                         |
+| Config Loader         | `Server/src/config/config.loader.ts`                                               |
+| Bootstrap Config      | `00_Base/src/config/bootstrap.config.ts` — schema + `loadBootstrapConfig()`        |
+| Config Schema (Zod)   | `00_Base/src/config/types.ts`                                                      |
+| Base Module Class     | `00_Base/src/interfaces/modules/AbstractModule.ts` — `_config: SystemConfig`       |
+| SystemConfig API      | `00_Base/src/interfaces/api/AbstractModuleApi.ts` — GET/PUT `/data/*/systemConfig` |
+| RabbitMQ Sender       | `02_Util/src/queue/rabbit-mq/sender.ts` — receives `amqpConfig` param              |
+| RabbitMQ Receiver     | `02_Util/src/queue/rabbit-mq/receiver.ts` — receives `amqpConfig` param            |
+| WebSocket Config      | S3 `config.json` → `util.networkConnection.websocketServers`                       |
 
 ---
 
