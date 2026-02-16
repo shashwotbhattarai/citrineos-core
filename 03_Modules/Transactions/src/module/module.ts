@@ -267,9 +267,10 @@ export class TransactionsModule extends AbstractModule {
     // Exchange: citrineos (direct exchange)
     // Routing Key: payment.settlement
     // Consumer should bind queue 'paymentRequests' to this routing key
-    const midlayerRabbitMqUrl = config.yatriEnergy?.rabbitmqUrl;
-    const midlayerRabbitMqExchange = config.yatriEnergy?.rabbitmqExchange || 'citrineos';
-    if (midlayerRabbitMqUrl && config.yatriEnergy?.enabled === 'true') {
+    // BOOTSTRAP: midlayer RabbitMQ config read from process.env (not config.json)
+    const midlayerRabbitMqUrl = process.env.YATRI_ENERGY_RABBITMQ_URL;
+    const midlayerRabbitMqExchange = process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE || 'citrineos';
+    if (midlayerRabbitMqUrl && process.env.YATRI_WALLET_INTEGRATION_ENABLED === 'true') {
       this._paymentRabbitMqPublisher = new PaymentRabbitMqPublisher(
         midlayerRabbitMqUrl,
         midlayerRabbitMqExchange,
@@ -821,7 +822,8 @@ export class TransactionsModule extends AbstractModule {
     const config = this._config as SystemConfig;
 
     // Check if Yatri Energy integration is enabled
-    if (!config.yatriEnergy?.enabled || config.yatriEnergy.enabled !== 'true') {
+    // Bootstrap value read from process.env (not config.json)
+    if (process.env.YATRI_WALLET_INTEGRATION_ENABLED !== 'true') {
       this._logger.debug(
         'Yatri Energy wallet integration is disabled, skipping payment settlement',
       );

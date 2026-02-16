@@ -1,3 +1,8 @@
+// @ts-nocheck — This file is kept as REFERENCE ONLY.
+// It is no longer imported or used by the server.
+// Config is loaded from config.json in storage (S3/local).
+// See Server/src/config/index.ts for the active config loading logic.
+
 // SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
 //
 // SPDX-License-Identifier: Apache-2.0

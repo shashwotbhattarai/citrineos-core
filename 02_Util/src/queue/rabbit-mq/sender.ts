@@ -123,7 +123,8 @@ export class RabbitMqSender extends AbstractMessageSender implements IMessageSen
       return { success: false, payload: 'Message payload must be set' };
     }
 
-    const exchange = this._config.util.messageBroker.amqp?.exchange as string;
+    // BOOTSTRAP: AMQP exchange read from process.env (not config.json)
+    const exchange = process.env.AMQP_EXCHANGE as string;
     if (!this._channel) {
       throw new Error('RabbitMQ is down: cannot unsubscribe.');
     }
@@ -173,9 +174,10 @@ export class RabbitMqSender extends AbstractMessageSender implements IMessageSen
    * @return {Promise<amqplib.Channel>} A promise that resolves to the AMQP channel.
    */
   protected async _connectWithRetry(abortSignal?: AbortSignal): Promise<amqplib.Channel> {
-    const url = this._config.util.messageBroker.amqp?.url;
+    // BOOTSTRAP: AMQP URL read from process.env (not config.json)
+    const url = process.env.AMQP_URL;
     if (!url) {
-      throw new Error('RabbitMQ URL is not configured');
+      throw new Error('RabbitMQ URL is not configured (AMQP_URL env var missing)');
     }
     while (true) {
       if (abortSignal?.aborted) {

@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
 #
 # SPDX-License-Identifier: Apache-2.0
+#
+# CONFIG SEPARATION:
+#   Bootstrap (env vars below) = secrets, infrastructure, healthcheck deps
+#   System (config.json in local storage) = application behavior
 services:
   amqp-broker:
     image: rabbitmq:3-management
@@ -92,17 +96,23 @@ services:
       AWS_SECRET_ACCESS_KEY: minioadmin
       # Database Strategy
       DB_STRATEGY: 'migrate'
-      # Bootstrap Configuration Environment Variables
+      # === BOOTSTRAP CONFIGURATION ===
       BOOTSTRAP_CITRINEOS_DATABASE_HOST: 'ocpp-db'
       BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: 'config.json'
-      # CITRINEOS_CONFIG_DIR: '/custom/config/path'  # Optional - uncomment if needed
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 'local'
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: '/data'
+      # === INTERNAL RABBITMQ (CitrineOS message broker) ===
+      # AMQP_URL and AMQP_EXCHANGE are built here and read by code via process.env
+      AMQP_URL: amqp://guest:guest@amqp-broker:5672
+      AMQP_EXCHANGE: citrineos
+      # === API AUTHENTICATION ===
+      # API key secret for service-to-service auth (config.json just sets apiKey: true)
+      CITRINEOS_API_KEY: 'dev-local-api-key-not-for-production'
+      # === YATRI ENERGY INTEGRATION (Bootstrap - secrets & healthcheck) ===
+      # NOTE: timeout and minimumBalance are in config.json, NOT here
       YATRI_ENERGY_BASE_URL: 'https://api.dev.yatri-energy.yatrimotorcycle.com'
       YATRI_ENERGY_API_KEY: ''
-      YATRI_ENERGY_TIMEOUT: '10000'
-      YATRI_MINIMUM_BALANCE: '100.0'
-      YATRI_WALLET_INTEGRATION_ENABLED: true
+      YATRI_WALLET_INTEGRATION_ENABLED: 'true'
     depends_on:
       ocpp-db:
         condition: service_healthy

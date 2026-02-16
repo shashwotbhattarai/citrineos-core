@@ -24,6 +24,11 @@
 #
 # If metadata fails, it means citrine hasn't created the tables yet.
 # Hasura MUST start AFTER citrine is healthy.
+#
+# CONFIG SEPARATION:
+#   Bootstrap (.env with BOOTSTRAP_* prefix) = secrets, infrastructure, healthcheck deps
+#   System (config.json in S3) = application behavior
+#   No hardcoded defaults - all values MUST be in .env
 
 services:
   amqp-broker:
@@ -32,8 +37,8 @@ services:
       - 15672:15672
       - 5672:5672
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+      RABBITMQ_DEFAULT_USER: ${BOOTSTRAP_RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${BOOTSTRAP_RABBITMQ_PASS}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -44,53 +49,56 @@ services:
     restart: unless-stopped
 
   citrine:
-    image: ${DOCKERHUB_USERNAME}/yatri-energy-citrine:cicd
+    image: ${BOOTSTRAP_DOCKERHUB_USERNAME}/yatri-energy-citrine:cicd
     environment:
       APP_NAME: 'all'
       APP_ENV: 'docker'
       DB_STRATEGY: 'migrate'
       # === AWS RDS DATABASE CONFIGURATION ===
-      BOOTSTRAP_CITRINEOS_DATABASE_HOST: ${RDS_HOST}
-      BOOTSTRAP_CITRINEOS_DATABASE_PORT: ${RDS_PORT:-5432}
-      BOOTSTRAP_CITRINEOS_DATABASE_NAME: ${RDS_DATABASE:-citrine}
-      BOOTSTRAP_CITRINEOS_DATABASE_USERNAME: ${RDS_USERNAME}
-      BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD: ${RDS_PASSWORD}
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: ${BOOTSTRAP_RDS_HOST}
+      BOOTSTRAP_CITRINEOS_DATABASE_PORT: ${BOOTSTRAP_RDS_PORT}
+      BOOTSTRAP_CITRINEOS_DATABASE_NAME: ${BOOTSTRAP_RDS_DATABASE}
+      BOOTSTRAP_CITRINEOS_DATABASE_USERNAME: ${BOOTSTRAP_RDS_USERNAME}
+      BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD: ${BOOTSTRAP_RDS_PASSWORD}
       BOOTSTRAP_CITRINEOS_DATABASE_DIALECT: 'postgres'
-      BOOTSTRAP_CITRINEOS_DATABASE_SSL: ${RDS_SSL:-true}
+      BOOTSTRAP_CITRINEOS_DATABASE_SSL: ${BOOTSTRAP_RDS_SSL}
       BOOTSTRAP_CITRINEOS_DATABASE_SYNC: 'false'
       BOOTSTRAP_CITRINEOS_DATABASE_ALTER: 'false'
-      BOOTSTRAP_CITRINEOS_DATABASE_MAX_RETRIES: ${RDS_MAX_RETRIES:-5}
-      BOOTSTRAP_CITRINEOS_DATABASE_RETRY_DELAY: ${RDS_RETRY_DELAY:-5000}
-      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: ${RDS_POOL_MAX:-20}
-      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: ${RDS_POOL_MIN:-5}
+      BOOTSTRAP_CITRINEOS_DATABASE_MAX_RETRIES: ${BOOTSTRAP_RDS_MAX_RETRIES}
+      BOOTSTRAP_CITRINEOS_DATABASE_RETRY_DELAY: ${BOOTSTRAP_RDS_RETRY_DELAY}
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: ${BOOTSTRAP_RDS_POOL_MAX}
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: ${BOOTSTRAP_RDS_POOL_MIN}
       # Config filename
       BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: 'config.json'
       # === AWS S3 FILE STORAGE CONFIGURATION ===
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 's3'
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_REGION: ${AWS_REGION:-ap-south-1}
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_DEFAULT_BUCKET_NAME: ${S3_BUCKET_NAME:-citrineos-files}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_REGION: ${BOOTSTRAP_AWS_REGION}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_DEFAULT_BUCKET_NAME: ${BOOTSTRAP_S3_BUCKET_NAME}
       BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_FORCE_PATH_STYLE: 'false'
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_ACCESS_KEY_ID: ${BOOTSTRAP_AWS_ACCESS_KEY_ID}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_SECRET_ACCESS_KEY: ${BOOTSTRAP_AWS_SECRET_ACCESS_KEY}
       # AWS Configuration (for SDK)
-      AWS_REGION: ${AWS_REGION:-ap-south-1}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${BOOTSTRAP_AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${BOOTSTRAP_AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${BOOTSTRAP_AWS_SECRET_ACCESS_KEY}
       # === INTERNAL RABBITMQ (CitrineOS message broker) ===
-      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
-      # Yatri Energy Integration
-      YATRI_ENERGY_BASE_URL: ${YATRI_ENERGY_BASE_URL:-https://api.dev.yatri-energy.yatrimotorcycle.com}
-      YATRI_ENERGY_API_KEY: ${YATRI_ENERGY_API_KEY:-}
-      YATRI_ENERGY_TIMEOUT: ${YATRI_ENERGY_TIMEOUT:-10000}
-      YATRI_MINIMUM_BALANCE: ${YATRI_MINIMUM_BALANCE:-100.0}
-      YATRI_WALLET_INTEGRATION_ENABLED: ${YATRI_WALLET_INTEGRATION_ENABLED:-true}
+      # AMQP_URL and AMQP_EXCHANGE are built here and read by code via process.env
+      AMQP_URL: amqp://${BOOTSTRAP_RABBITMQ_USER}:${BOOTSTRAP_RABBITMQ_PASS}@amqp-broker:5672
+      AMQP_EXCHANGE: ${BOOTSTRAP_AMQP_EXCHANGE}
+      # === API AUTHENTICATION ===
+      # API key secret for service-to-service auth (config.json just sets apiKey: true)
+      CITRINEOS_API_KEY: ${BOOTSTRAP_CITRINEOS_API_KEY}
+      # === YATRI ENERGY INTEGRATION (Bootstrap - secrets & healthcheck) ===
+      # NOTE: timeout and minimumBalance are in config.json, NOT here
+      YATRI_ENERGY_BASE_URL: ${BOOTSTRAP_YATRI_ENERGY_BASE_URL}
+      YATRI_ENERGY_API_KEY: ${BOOTSTRAP_YATRI_ENERGY_API_KEY}
+      YATRI_WALLET_INTEGRATION_ENABLED: ${BOOTSTRAP_YATRI_WALLET_INTEGRATION_ENABLED}
       # AWS SQS Configuration (Async Payment Processing)
-      YATRI_ENERGY_SQS_REGION: ${YATRI_ENERGY_SQS_REGION:-}
-      YATRI_ENERGY_SQS_QUEUE_URL: ${YATRI_ENERGY_SQS_QUEUE_URL:-}
+      YATRI_ENERGY_SQS_REGION: ${BOOTSTRAP_YATRI_ENERGY_SQS_REGION}
+      YATRI_ENERGY_SQS_QUEUE_URL: ${BOOTSTRAP_YATRI_ENERGY_SQS_QUEUE_URL}
       # Midlayer RabbitMQ (for async payment queue)
-      YATRI_ENERGY_RABBITMQ_URL: ${YATRI_ENERGY_RABBITMQ_URL:-}
-      YATRI_ENERGY_RABBITMQ_EXCHANGE: ${YATRI_ENERGY_RABBITMQ_EXCHANGE:-citrineos}
+      YATRI_ENERGY_RABBITMQ_URL: ${BOOTSTRAP_YATRI_ENERGY_RABBITMQ_URL}
+      YATRI_ENERGY_RABBITMQ_EXCHANGE: ${BOOTSTRAP_YATRI_ENERGY_RABBITMQ_EXCHANGE}
     depends_on:
       amqp-broker:
         condition: service_healthy
@@ -115,16 +123,16 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   graphql-engine:
-    image: ${DOCKERHUB_USERNAME}/yatri-energy-hasura:cicd
+    image: ${BOOTSTRAP_DOCKERHUB_USERNAME}/yatri-energy-hasura:cicd
     ports:
       - 8090:8080
     depends_on:
       citrine:
         condition: service_healthy
     environment:
-      HASURA_GRAPHQL_DATABASE_URL: postgres://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/${RDS_DATABASE:-citrine}?sslmode=require
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${BOOTSTRAP_RDS_USERNAME}:${BOOTSTRAP_RDS_PASSWORD}@${BOOTSTRAP_RDS_HOST}:${BOOTSTRAP_RDS_PORT}/${BOOTSTRAP_RDS_DATABASE}?sslmode=require
       HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
-      HASURA_GRAPHQL_DEV_MODE: ${HASURA_DEV_MODE:-false}
+      HASURA_GRAPHQL_DEV_MODE: ${BOOTSTRAP_HASURA_DEV_MODE}
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
       HASURA_GRAPHQL_ENABLE_TELEMETRY: 'false'
       HASURA_GRAPHQL_METADATA_DEFAULTS: '{"backend_configs":{"dataconnector":{"athena":{"uri":"http://data-connector-agent:8081/api/v1/athena"},"mariadb":{"uri":"http://data-connector-agent:8081/api/v1/mariadb"},"mysql8":{"uri":"http://data-connector-agent:8081/api/v1/mysql"},"oracle":{"uri":"http://data-connector-agent:8081/api/v1/oracle"},"snowflake":{"uri":"http://data-connector-agent:8081/api/v1/snowflake"}}}}'
@@ -151,7 +159,7 @@ services:
       WATCHTOWER_INCLUDE_RESTARTING: 'true'
       WATCHTOWER_ROLLING_RESTART: 'true'
       WATCHTOWER_NOTIFICATIONS: 'shoutrrr'
-      WATCHTOWER_NOTIFICATION_URL: ${WATCHTOWER_NOTIFICATION_URL:-}
+      WATCHTOWER_NOTIFICATION_URL: ${BOOTSTRAP_WATCHTOWER_NOTIFICATION_URL}
     restart: unless-stopped
 
 volumes:
