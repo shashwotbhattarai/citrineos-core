@@ -18,6 +18,9 @@ export interface PaymentSettlementPayload {
   /** Charging station identifier */
   stationId: string;
   /** Tenant ID for multi-tenant isolation */
+
+  locationId: number;
+
   tenantId: number;
   /** User's RFID token (lowercase) */
   idToken: string;

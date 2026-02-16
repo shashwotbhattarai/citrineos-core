@@ -878,6 +878,9 @@ export class TransactionsModule extends AbstractModule {
 
     // Generate idempotency key to prevent duplicate charges
     const paymentIdempotencyKey = uuidv4();
+    if (!transaction.locationId) {
+      throw new Error('Location ID is required for payment settlement');
+    }
 
     // Prepare RabbitMQ payload
     const payload: PaymentSettlementPayload = {
@@ -885,6 +888,7 @@ export class TransactionsModule extends AbstractModule {
       transactionDatabaseId: transaction.id,
       transactionId: transaction.transactionId,
       stationId: transaction.stationId,
+      locationId: transaction.locationId,
       tenantId: message.context.tenantId,
       idToken: idToken.toLowerCase(),
       amount: totalCostAmount,
