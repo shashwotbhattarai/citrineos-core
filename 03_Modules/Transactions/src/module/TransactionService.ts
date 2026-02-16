@@ -268,35 +268,35 @@ export class TransactionService {
   ): Promise<boolean> {
     try {
       // Get system configuration to check if Yatri Energy integration is enabled
-      if (!systemConfig?.yatriEnergy?.enabled) {
+      // BOOTSTRAP: wallet enabled flag and API credentials read from process.env (not config.json)
+      if (process.env.YATRI_WALLET_INTEGRATION_ENABLED !== 'true') {
         this._logger.debug('Yatri Energy wallet integration is disabled, skipping wallet check');
         return true; // Skip wallet check if integration is disabled
       }
 
       // Create Yatri Energy client
+      // BOOTSTRAP: baseUrl and apiKey read from process.env; timeout from config.json
       const yatriClient = new YatriEnergyClient(
-        systemConfig.yatriEnergy.baseUrl,
-        systemConfig.yatriEnergy.timeout,
-        systemConfig.yatriEnergy.apiKey,
+        process.env.YATRI_ENERGY_BASE_URL as string,
+        systemConfig?.yatriEnergy?.timeout ?? 10000,
+        process.env.YATRI_ENERGY_API_KEY as string,
         this._logger,
       );
 
       // Check minimum balance using the YatriEnergyClient method
-      const hasMinimumBalance = await yatriClient.checkMinimumBalance(
-        idToken,
-        systemConfig.yatriEnergy.minimumBalance,
-      );
+      const minimumBalance = systemConfig?.yatriEnergy?.minimumBalance ?? 100.0;
+      const hasMinimumBalance = await yatriClient.checkMinimumBalance(idToken, minimumBalance);
 
       if (!hasMinimumBalance) {
         this._logger.warn(`Wallet balance check failed for idToken: ${idToken}`, {
-          minimumRequired: systemConfig.yatriEnergy.minimumBalance,
+          minimumRequired: minimumBalance,
           stationId: context.stationId,
         });
         return false;
       }
 
       this._logger.debug(`Wallet balance check passed for idToken: ${idToken}`, {
-        minimumRequired: systemConfig.yatriEnergy.minimumBalance,
+        minimumRequired: minimumBalance,
         stationId: context.stationId,
       });
 

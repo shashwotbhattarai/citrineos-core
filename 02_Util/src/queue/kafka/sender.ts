@@ -41,16 +41,16 @@ export class KafkaSender extends AbstractMessageSender implements IMessageSender
     this._circuitBreaker = circuitBreaker ?? new CircuitBreaker();
     this._circuitBreaker.onStateChange(this._onCircuitBreakerStateChange.bind(this));
     this._client = new Kafka({
-      brokers: config.util.messageBroker.kafka?.brokers || [],
+      brokers: config.util.messageBroker?.kafka?.brokers || [],
       ssl: true,
       sasl: {
         mechanism: 'plain',
-        username: config.util.messageBroker.kafka?.sasl.username || '',
-        password: config.util.messageBroker.kafka?.sasl.password || '',
+        username: config.util.messageBroker?.kafka?.sasl.username || '',
+        password: config.util.messageBroker?.kafka?.sasl.password || '',
       },
     });
     this._producers = new Array<Producer>();
-    this._topicName = `${this._config.util.messageBroker.kafka?.topicPrefix}-${this._config.util.messageBroker.kafka?.topicName}`;
+    this._topicName = `${this._config.util.messageBroker?.kafka?.topicPrefix}-${this._config.util.messageBroker?.kafka?.topicName}`;
     this._initAdmin();
   }
 

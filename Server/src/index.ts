@@ -135,9 +135,9 @@ export class CitrineOSServer {
     cache?: ICache,
     _fileStorage?: IFileStorage,
   ) {
-    // TODO: Create and export config schemas for each util module, such as amqp, redis, kafka, etc, to avoid passing them possibly invalid configuration
-    if (!systemConfig.util.messageBroker.amqp) {
-      throw new Error('This server implementation requires amqp configuration for rabbitMQ.');
+    // BOOTSTRAP: AMQP config now comes from process.env (AMQP_URL, AMQP_EXCHANGE)
+    if (!process.env.AMQP_URL) {
+      throw new Error('AMQP_URL environment variable is required for RabbitMQ configuration.');
     }
 
     this.appName = appName;
@@ -321,6 +321,10 @@ export class CitrineOSServer {
           type: 'string',
           enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
         },
+        midlayerApi: {
+          type: 'string',
+          enum: ['connected', 'disconnected', 'not_configured', 'unknown'],
+        },
         errors: { type: 'array', items: { type: 'string' } },
       },
       required: [
@@ -331,6 +335,7 @@ export class CitrineOSServer {
         'hasura',
         'walletIntegration',
         'paymentQueue',
+        'midlayerApi',
       ],
     };
 
@@ -358,7 +363,8 @@ export class CitrineOSServer {
           },
         },
         async (_request, reply) => {
-          const walletEnabled = config.yatriEnergy?.enabled === 'true';
+          // BOOTSTRAP: wallet enabled flag read from process.env (not config.json)
+          const walletEnabled = process.env.YATRI_WALLET_INTEGRATION_ENABLED === 'true';
           const healthStatus: {
             status: string;
             database: string;
@@ -367,6 +373,7 @@ export class CitrineOSServer {
             hasura: string;
             walletIntegration: string;
             paymentQueue: string;
+            midlayerApi: string;
             errors?: string[];
           } = {
             status: 'healthy',
@@ -376,6 +383,7 @@ export class CitrineOSServer {
             hasura: 'unknown',
             walletIntegration: walletEnabled ? 'enabled' : 'disabled',
             paymentQueue: 'unknown',
+            midlayerApi: 'unknown',
           };
           const errors: string[] = [];
 
@@ -390,7 +398,8 @@ export class CitrineOSServer {
 
           // Check RabbitMQ connection
           try {
-            const amqpUrl = config.util.messageBroker.amqp?.url;
+            // BOOTSTRAP: AMQP URL read from process.env (not config.json)
+            const amqpUrl = process.env.AMQP_URL;
             if (amqpUrl) {
               const connection = await amqplib.connect(amqpUrl);
               await connection.close();
@@ -468,7 +477,8 @@ export class CitrineOSServer {
           // Check midlayer RabbitMQ connection (for async payment processing)
           // If wallet integration is enabled, midlayer RabbitMQ MUST be configured and connected
           try {
-            const midlayerRabbitMqUrl = config.yatriEnergy?.rabbitmqUrl;
+            // BOOTSTRAP: midlayer RabbitMQ URL read from process.env (not config.json)
+            const midlayerRabbitMqUrl = process.env.YATRI_ENERGY_RABBITMQ_URL;
 
             if (midlayerRabbitMqUrl) {
               const connection = await amqplib.connect(midlayerRabbitMqUrl);
@@ -485,6 +495,37 @@ export class CitrineOSServer {
           } catch (error) {
             healthStatus.paymentQueue = 'disconnected';
             errors.push('Midlayer RabbitMQ connection failed');
+          }
+
+          // Check midlayer API reachability (yatri-energy-backend /health)
+          // Only checked if wallet integration is enabled
+          try {
+            // BOOTSTRAP: midlayer API base URL read from process.env (not config.json)
+            const midlayerBaseUrl = process.env.YATRI_ENERGY_BASE_URL;
+
+            if (midlayerBaseUrl && walletEnabled) {
+              const healthUrl = midlayerBaseUrl.replace(/\/+$/, '') + '/health';
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 5000);
+              const response = await fetch(healthUrl, { signal: controller.signal });
+              clearTimeout(timeoutId);
+              if (response.ok) {
+                healthStatus.midlayerApi = 'connected';
+              } else {
+                healthStatus.midlayerApi = 'disconnected';
+                errors.push(`Midlayer API health check failed (HTTP ${response.status})`);
+              }
+            } else if (walletEnabled) {
+              // Wallet integration is enabled but midlayer base URL is not configured
+              healthStatus.midlayerApi = 'not_configured';
+              errors.push('Midlayer API base URL not configured but wallet integration is enabled');
+            } else {
+              // Wallet integration is disabled, midlayer API check not needed
+              healthStatus.midlayerApi = 'not_configured';
+            }
+          } catch (error) {
+            healthStatus.midlayerApi = 'disconnected';
+            errors.push('Midlayer API health check failed');
           }
 
           // Determine overall health status
@@ -675,7 +716,14 @@ export class CitrineOSServer {
     if (this._config.util.authProvider.oidc) {
       return new OIDCAuthProvider(this._config.util.authProvider.oidc, this._logger);
     } else if (this._config.util.authProvider.apiKey) {
-      return new ApiKeyAuthProvider(this._config.util.authProvider.apiKey, this._logger);
+      // BOOTSTRAP: API key secret read from process.env (not config.json)
+      const apiKey = process.env.CITRINEOS_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          'CITRINEOS_API_KEY environment variable is required when apiKey auth is enabled',
+        );
+      }
+      return new ApiKeyAuthProvider(apiKey, this._logger);
     } else if (this._config.util.authProvider.localByPass) {
       return new LocalBypassAuthProvider(this._logger);
     } else {

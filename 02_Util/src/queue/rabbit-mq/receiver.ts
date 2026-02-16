@@ -95,7 +95,8 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
       return true;
     }
 
-    const exchange = this._config.util.messageBroker.amqp?.exchange as string;
+    // BOOTSTRAP: AMQP exchange read from process.env (not config.json)
+    const exchange = process.env.AMQP_EXCHANGE as string;
     const queueName = `${RabbitMqReceiver.QUEUE_PREFIX}${identifier}_${Date.now()}`;
 
     // Ensure that filter includes the x-match header set to all
@@ -167,11 +168,7 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
           const channel = this._channel;
           this._channel = channel;
           for (const queue of queues) {
-            await channel.unbindQueue(
-              queue,
-              this._config.util.messageBroker.amqp?.exchange || '',
-              '',
-            );
+            await channel.unbindQueue(queue, process.env.AMQP_EXCHANGE || '', '');
             const messageCount = await this._channel?.deleteQueue(queue);
             this._logger.info(
               `Queue ${identifier} deleted with ${messageCount?.messageCount} messages remaining.`,
@@ -206,9 +203,10 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
    * @return {Promise<amqplib.Channel>} A promise that resolves to the AMQP channel.
    */
   protected async _connectWithRetry(abortSignal?: AbortSignal): Promise<amqplib.Channel> {
-    const url = this._config.util.messageBroker.amqp?.url;
+    // BOOTSTRAP: AMQP URL read from process.env (not config.json)
+    const url = process.env.AMQP_URL;
     if (!url) {
-      throw new Error('RabbitMQ URL is not configured');
+      throw new Error('RabbitMQ URL is not configured (AMQP_URL env var missing)');
     }
     while (true) {
       if (abortSignal?.aborted) {
