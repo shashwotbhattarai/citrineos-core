@@ -1,6 +1,6 @@
 # CitrineOS Implementation Status
 
-**Last Updated**: January 8, 2026
+**Last Updated**: February 16, 2026
 **Purpose**: Single source of truth for what's implemented vs planned
 **For Claude**: Check this before suggesting implementations
 
@@ -200,12 +200,12 @@ Operation rejected to prevent data being assigned to wrong tenant.
 
 ### Data APIs
 
-| Endpoint                               | Status | Notes                |
-| -------------------------------------- | ------ | -------------------- |
-| `GET /data/configuration/systemConfig` | ✅     | Read config          |
-| `PUT /data/configuration/systemConfig` | ✅     | Update config        |
-| `POST /data/ocpprouter/subscription`   | ✅     | Webhook subscription |
-| GraphQL (Hasura)                       | ✅     | Port 8090            |
+| Endpoint                             | Status | Notes                                                         |
+| ------------------------------------ | ------ | ------------------------------------------------------------- |
+| `GET /data/*/systemConfig`           | ✅     | Returns **SystemConfig only** — no secrets (Feb 16, 2026 fix) |
+| `PUT /data/*/systemConfig`           | ✅     | Saves **SystemConfig only** to S3 — no secrets                |
+| `POST /data/ocpprouter/subscription` | ✅     | Webhook subscription                                          |
+| GraphQL (Hasura)                     | ✅     | Port 8090                                                     |
 
 ---
 
@@ -279,6 +279,15 @@ Operation rejected to prevent data being assigned to wrong tenant.
 - [ ] Test cross-tenant security
 
 ---
+
+## Recent Fixes
+
+| Fix                             | Date         | Severity | Details                                                                                                                                     |
+| ------------------------------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config separation (secret leak) | Feb 16, 2026 | Critical | `GET /data/*/systemConfig` was leaking DB creds, S3 keys. Now returns SystemConfig only. See [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md) |
+| IdToken case normalization      | Jan 15, 2026 | High     | All idTokens normalized to lowercase at entry points                                                                                        |
+| Cross-tenant security           | Jan 13, 2026 | Critical | Repository methods now filter by tenantId                                                                                                   |
+| Multi-tenant unique constraints | Jan 13, 2026 | Medium   | Components/Variables include tenantId in unique constraints                                                                                 |
 
 ## Known Issues
 
