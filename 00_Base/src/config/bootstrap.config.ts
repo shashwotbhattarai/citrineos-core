@@ -80,6 +80,34 @@ export const bootstrapConfigSchema = z.object({
         message: 'Configuration for the selected file access type must be provided',
       },
     ),
+
+  // AMQP (RabbitMQ) configuration — read from container env vars built by docker-compose
+  amqp: z.object({
+    url: z.string(),
+    exchange: z.string().default(''),
+  }),
+
+  // API key secret (optional — only needed when apiKey auth is enabled in config.json)
+  apiKey: z.string().optional(),
+
+  // Yatri Energy midlayer integration
+  yatriEnergy: z
+    .object({
+      enabled: z.boolean().default(false),
+      baseUrl: z.string().optional(),
+      apiKey: z.string().optional(),
+      rabbitmqUrl: z.string().optional(),
+      rabbitmqExchange: z.string().default('citrineos'),
+      sqsRegion: z.string().optional(),
+      sqsQueueUrl: z.string().optional(),
+    })
+    .default({}),
+
+  // Hasura health check URL
+  hasuraHealthUrl: z.string().optional(),
+
+  // Deployment target (e.g. 'cloud' for JSON logging)
+  deploymentTarget: z.string().optional(),
 });
 
 export type BootstrapConfig = z.infer<typeof bootstrapConfigSchema>;
@@ -174,6 +202,32 @@ export function loadBootstrapConfig(): BootstrapConfig {
       };
       break;
   }
+
+  // AMQP configuration — these are the final container env vars (built by docker-compose from BOOTSTRAP_* parts)
+  config.amqp = {
+    url: process.env.AMQP_URL,
+    exchange: process.env.AMQP_EXCHANGE || '',
+  };
+
+  // API key secret
+  config.apiKey = process.env.CITRINEOS_API_KEY;
+
+  // Yatri Energy midlayer integration
+  config.yatriEnergy = {
+    enabled: process.env.YATRI_WALLET_INTEGRATION_ENABLED === 'true',
+    baseUrl: process.env.YATRI_ENERGY_BASE_URL,
+    apiKey: process.env.YATRI_ENERGY_API_KEY,
+    rabbitmqUrl: process.env.YATRI_ENERGY_RABBITMQ_URL,
+    rabbitmqExchange: process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE || 'citrineos',
+    sqsRegion: process.env.YATRI_ENERGY_SQS_REGION,
+    sqsQueueUrl: process.env.YATRI_ENERGY_SQS_QUEUE_URL,
+  };
+
+  // Hasura health check URL
+  config.hasuraHealthUrl = process.env.HASURA_HEALTH_URL;
+
+  // Deployment target
+  config.deploymentTarget = process.env.DEPLOYMENT_TARGET;
 
   try {
     return bootstrapConfigSchema.parse(config);

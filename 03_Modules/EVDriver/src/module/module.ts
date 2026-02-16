@@ -81,6 +81,7 @@ export class EVDriverModule extends AbstractModule {
   private _localAuthListService: LocalAuthListService;
   private _authorizers: IAuthorizer[];
   private _idGenerator: IdGenerator;
+  private readonly _bootstrapConfig?: BootstrapConfig;
 
   /**
    * This is the constructor function that initializes the {@link EVDriverModule}.
@@ -147,7 +148,7 @@ export class EVDriverModule extends AbstractModule {
    * unique identifiers.
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender?: IMessageSender,
     handler?: IMessageHandler,
@@ -165,6 +166,7 @@ export class EVDriverModule extends AbstractModule {
     realTimeAuthorizer?: IAuthorizer,
     authorizers?: IAuthorizer[],
     idGenerator?: IdGenerator,
+    bootstrapConfig?: BootstrapConfig,
   ) {
     super(
       config,
@@ -175,28 +177,34 @@ export class EVDriverModule extends AbstractModule {
       logger,
     );
 
+    this._bootstrapConfig = bootstrapConfig;
+
     this._requests = config.modules.evdriver.requests;
     this._responses = config.modules.evdriver.responses;
 
+    // Note: fallback repo creation requires bootstrapConfig; these paths are only hit
+    // when the module is used standalone without pre-created repositories.
+    const repoConfig = bootstrapConfig!;
     this._authorizeRepository =
-      authorizeRepository || new sequelize.SequelizeAuthorizationRepository(config, logger);
+      authorizeRepository || new sequelize.SequelizeAuthorizationRepository(repoConfig, logger);
     this._localAuthListRepository =
-      localAuthListRepository || new sequelize.SequelizeLocalAuthListRepository(config, logger);
+      localAuthListRepository || new sequelize.SequelizeLocalAuthListRepository(repoConfig, logger);
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, logger);
+      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(repoConfig, logger);
     this._tariffRepository =
-      tariffRepository || new sequelize.SequelizeTariffRepository(config, logger);
+      tariffRepository || new sequelize.SequelizeTariffRepository(repoConfig, logger);
     this._transactionEventRepository =
       transactionEventRepository ||
-      new sequelize.SequelizeTransactionEventRepository(config, logger);
+      new sequelize.SequelizeTransactionEventRepository(repoConfig, logger);
     this._chargingProfileRepository =
-      chargingProfileRepository || new sequelize.SequelizeChargingProfileRepository(config, logger);
+      chargingProfileRepository ||
+      new sequelize.SequelizeChargingProfileRepository(repoConfig, logger);
     this._reservationRepository =
-      reservationRepository || new sequelize.SequelizeReservationRepository(config, logger);
+      reservationRepository || new sequelize.SequelizeReservationRepository(repoConfig, logger);
     this._ocppMessageRepository =
-      ocppMessageRepository || new sequelize.SequelizeOCPPMessageRepository(config, logger);
+      ocppMessageRepository || new sequelize.SequelizeOCPPMessageRepository(repoConfig, logger);
     this._locationRepository =
-      locationRepository || new sequelize.SequelizeLocationRepository(config, logger);
+      locationRepository || new sequelize.SequelizeLocationRepository(repoConfig, logger);
 
     this._certificateAuthorityService =
       certificateAuthorityService || new CertificateAuthorityService(config, logger);
@@ -213,7 +221,11 @@ export class EVDriverModule extends AbstractModule {
 
     this._idGenerator =
       idGenerator ||
-      new IdGenerator(new SequelizeChargingStationSequenceRepository(config, this._logger));
+      new IdGenerator(new SequelizeChargingStationSequenceRepository(repoConfig, this._logger));
+  }
+
+  get bootstrapConfig(): BootstrapConfig | undefined {
+    return this._bootstrapConfig;
   }
 
   get authorizeRepository(): IAuthorizationRepository {

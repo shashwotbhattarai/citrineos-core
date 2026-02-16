@@ -2,13 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 import { IChargingStationSecurityInfoRepository, sequelize } from '@citrineos/data';
-import {
-  BootstrapConfig,
-  IFileStorage,
-  OCPP2_0_1,
-  SignedMeterValuesConfig,
-  SystemConfig,
-} from '@citrineos/base';
+import { IFileStorage, OCPP2_0_1, SignedMeterValuesConfig, SystemConfig } from '@citrineos/base';
 import { ILogObj, Logger } from 'tslog';
 import * as crypto from 'node:crypto';
 import { stringToArrayBuffer } from 'pvutils';
@@ -26,20 +20,16 @@ export class SignedMeterValuesUtil {
   /**
    * @param {IFileStorage} [fileStorage] - The `fileStorage` allows access to the configured file storage.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains the current system configuration settings.
+   * @param {SystemConfig} config - The `config` contains the current system configuration settings.
    *
    * @param {Logger<ILogObj>} [logger] - The `logger` represents an instance of {@link Logger<ILogObj>}.
    *
    */
-  constructor(
-    fileStorage: IFileStorage,
-    config: BootstrapConfig & SystemConfig,
-    logger: Logger<ILogObj>,
-  ) {
+  constructor(fileStorage: IFileStorage, config: SystemConfig, logger: Logger<ILogObj>) {
     this._fileStorage = fileStorage;
     this._logger = logger;
     this._chargingStationSecurityInfoRepository =
-      new sequelize.SequelizeChargingStationSecurityInfoRepository(config, logger);
+      new sequelize.SequelizeChargingStationSecurityInfoRepository(config as any, logger);
 
     this._signedMeterValuesConfiguration =
       config.modules.transactions.signedMeterValuesConfiguration;

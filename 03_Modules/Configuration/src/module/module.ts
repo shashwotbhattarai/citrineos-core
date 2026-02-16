@@ -6,7 +6,6 @@ import {
   AbstractModule,
   AsHandler,
   BOOT_STATUS,
-  BootstrapConfig,
   CallAction,
   ChargingStationSequenceType,
   ErrorCode,
@@ -76,7 +75,7 @@ export class ConfigurationModule extends AbstractModule {
   /**
    * This is the constructor function that initializes the {@link ConfigurationModule}.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains configuration settings for the module.
+   * @param {SystemConfig} config - The `config` contains configuration settings for the module.
    *
    * @param {ICache} [cache] - The cache instance which is shared among the modules & Central System to pass information such as blacklisted actions or boot status.
    *
@@ -117,7 +116,7 @@ export class ConfigurationModule extends AbstractModule {
    *If no `deviceModelRepository` is provided, a default {@link sequelize:messageInfoRepository} instance is created and used.
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender?: IMessageSender,
     handler?: IMessageHandler,
@@ -143,18 +142,20 @@ export class ConfigurationModule extends AbstractModule {
     this._responses = config.modules.configuration.responses;
 
     this._bootRepository =
-      bootRepository || new sequelize.SequelizeBootRepository(config, this._logger);
+      bootRepository || new sequelize.SequelizeBootRepository(config as any, this._logger);
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, this._logger);
+      deviceModelRepository ||
+      new sequelize.SequelizeDeviceModelRepository(config as any, this._logger);
     this._messageInfoRepository =
-      messageInfoRepository || new sequelize.SequelizeMessageInfoRepository(config, this._logger);
+      messageInfoRepository ||
+      new sequelize.SequelizeMessageInfoRepository(config as any, this._logger);
     this._locationRepository =
-      locationRepository || new sequelize.SequelizeLocationRepository(config, this._logger);
+      locationRepository || new sequelize.SequelizeLocationRepository(config as any, this._logger);
     this._changeConfigurationRepository =
       changeConfigurationRepository ||
-      new SequelizeChangeConfigurationRepository(config, this._logger);
+      new SequelizeChangeConfigurationRepository(config as any, this._logger);
     this._ocppMessageRepository =
-      ocppMessageRepository || new SequelizeOCPPMessageRepository(config, this._logger);
+      ocppMessageRepository || new SequelizeOCPPMessageRepository(config as any, this._logger);
 
     this._deviceModelService = new DeviceModelService(this._deviceModelRepository);
 
@@ -167,7 +168,7 @@ export class ConfigurationModule extends AbstractModule {
 
     this._idGenerator =
       idGenerator ||
-      new IdGenerator(new SequelizeChargingStationSequenceRepository(config, this._logger));
+      new IdGenerator(new SequelizeChargingStationSequenceRepository(config as any, this._logger));
   }
 
   get bootRepository(): IBootRepository {

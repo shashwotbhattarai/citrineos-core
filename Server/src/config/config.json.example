@@ -157,7 +157,7 @@
       "memory": true
     },
     "authProvider": {
-      "apiKey": "your-api-key-here"
+      "apiKey": true
     },
     "swagger": {
       "path": "/docs",

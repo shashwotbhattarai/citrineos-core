@@ -42,6 +42,8 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
   private _abortReconnectController?: AbortController;
   private _circuitBreaker: CircuitBreaker;
   private _reconnectInterval?: NodeJS.Timeout;
+  private readonly _amqpUrl: string;
+  private readonly _amqpExchange: string;
 
   constructor(
     config: SystemConfig,
@@ -49,8 +51,11 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
     module?: IModule,
     cache?: ICache,
     circuitBreaker?: CircuitBreaker,
+    amqpConfig?: { url: string; exchange: string },
   ) {
     super(config, logger, module);
+    this._amqpUrl = amqpConfig?.url || process.env.AMQP_URL || '';
+    this._amqpExchange = amqpConfig?.exchange ?? process.env.AMQP_EXCHANGE ?? '';
     this._cache = cache || new MemoryCache();
     this._circuitBreaker = circuitBreaker ?? new CircuitBreaker();
     this._circuitBreaker.onStateChange(this._onCircuitBreakerStateChange.bind(this));
@@ -95,8 +100,7 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
       return true;
     }
 
-    // BOOTSTRAP: AMQP exchange read from process.env (not config.json)
-    const exchange = process.env.AMQP_EXCHANGE as string;
+    const exchange = this._amqpExchange;
     const queueName = `${RabbitMqReceiver.QUEUE_PREFIX}${identifier}_${Date.now()}`;
 
     // Ensure that filter includes the x-match header set to all
@@ -168,7 +172,7 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
           const channel = this._channel;
           this._channel = channel;
           for (const queue of queues) {
-            await channel.unbindQueue(queue, process.env.AMQP_EXCHANGE || '', '');
+            await channel.unbindQueue(queue, this._amqpExchange || '', '');
             const messageCount = await this._channel?.deleteQueue(queue);
             this._logger.info(
               `Queue ${identifier} deleted with ${messageCount?.messageCount} messages remaining.`,
@@ -203,8 +207,7 @@ export class RabbitMqReceiver extends AbstractMessageHandler {
    * @return {Promise<amqplib.Channel>} A promise that resolves to the AMQP channel.
    */
   protected async _connectWithRetry(abortSignal?: AbortSignal): Promise<amqplib.Channel> {
-    // BOOTSTRAP: AMQP URL read from process.env (not config.json)
-    const url = process.env.AMQP_URL;
+    const url = this._amqpUrl;
     if (!url) {
       throw new Error('RabbitMQ URL is not configured (AMQP_URL env var missing)');
     }

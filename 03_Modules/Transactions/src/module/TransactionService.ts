@@ -11,7 +11,7 @@ import {
   IOCPPMessageRepository,
 } from '@citrineos/data';
 import { YatriEnergyClient } from '@citrineos/util';
-import { SystemConfig } from '@citrineos/base';
+import { BootstrapConfig, SystemConfig } from '@citrineos/base';
 import {
   AuthorizationStatusType,
   IAuthorizationDto,
@@ -31,6 +31,7 @@ export class TransactionService {
   private _ocppMessageRepository: IOCPPMessageRepository;
   private _logger: Logger<ILogObj>;
   private _authorizers: IAuthorizer[];
+  private _bootstrapConfig?: BootstrapConfig;
 
   constructor(
     transactionEventRepository: ITransactionEventRepository,
@@ -40,6 +41,7 @@ export class TransactionService {
     realTimeAuthorizer: IAuthorizer,
     authorizers?: IAuthorizer[],
     logger?: Logger<ILogObj>,
+    bootstrapConfig?: BootstrapConfig,
   ) {
     this._transactionEventRepository = transactionEventRepository;
     this._authorizeRepository = authorizeRepository;
@@ -49,6 +51,7 @@ export class TransactionService {
       ? logger.getSubLogger({ name: this.constructor.name })
       : new Logger<ILogObj>({ name: this.constructor.name });
     this._authorizers = [realTimeAuthorizer, ...(authorizers || [])];
+    this._bootstrapConfig = bootstrapConfig;
   }
 
   async recalculateTotalKwh(tenantId: number, transactionDbId: number) {
@@ -267,19 +270,16 @@ export class TransactionService {
     systemConfig?: SystemConfig,
   ): Promise<boolean> {
     try {
-      // Get system configuration to check if Yatri Energy integration is enabled
-      // BOOTSTRAP: wallet enabled flag and API credentials read from process.env (not config.json)
-      if (process.env.YATRI_WALLET_INTEGRATION_ENABLED !== 'true') {
+      if (!this._bootstrapConfig?.yatriEnergy?.enabled) {
         this._logger.debug('Yatri Energy wallet integration is disabled, skipping wallet check');
         return true; // Skip wallet check if integration is disabled
       }
 
       // Create Yatri Energy client
-      // BOOTSTRAP: baseUrl and apiKey read from process.env; timeout from config.json
       const yatriClient = new YatriEnergyClient(
-        process.env.YATRI_ENERGY_BASE_URL as string,
+        this._bootstrapConfig.yatriEnergy.baseUrl as string,
         systemConfig?.yatriEnergy?.timeout ?? 10000,
-        process.env.YATRI_ENERGY_API_KEY as string,
+        this._bootstrapConfig.yatriEnergy.apiKey as string,
         this._logger,
       );
 
