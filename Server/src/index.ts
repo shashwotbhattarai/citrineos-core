@@ -348,7 +348,7 @@ export class CitrineOSServer {
         {
           schema: {
             description:
-              'Health check endpoint for infrastructure monitoring (Database + RabbitMQ + S3)',
+              'Health check endpoint for infrastructure monitoring (Database + RabbitMQ + S3 + Hasura + Midlayer RabbitMQ + Midlayer API)',
             tags: ['System'],
             response: {
               200: {
