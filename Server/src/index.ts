@@ -30,6 +30,7 @@ import {
   DirectusUtil,
   IdGenerator,
   initSwagger,
+  ApiKeyAuthProvider,
   LocalBypassAuthProvider,
   MemoryCache,
   NetworkProfileFilter,
@@ -673,6 +674,8 @@ export class CitrineOSServer {
     this._logger.info('Initializing API authentication provider,', this._config.util.authProvider);
     if (this._config.util.authProvider.oidc) {
       return new OIDCAuthProvider(this._config.util.authProvider.oidc, this._logger);
+    } else if (this._config.util.authProvider.apiKey) {
+      return new ApiKeyAuthProvider(this._config.util.authProvider.apiKey, this._logger);
     } else if (this._config.util.authProvider.localByPass) {
       return new LocalBypassAuthProvider(this._logger);
     } else {

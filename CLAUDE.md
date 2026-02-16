@@ -102,6 +102,53 @@ Each WebSocket server is configured with a specific `tenantId`. Chargers on that
 
 ---
 
+## API Authentication
+
+The HTTP API (port 8080) supports three authentication providers, configured via `util.authProvider` in `config.json`. Only one should be active at a time.
+
+### Provider Options
+
+| Provider         | Config Key    | Use Case                                                     |
+| ---------------- | ------------- | ------------------------------------------------------------ |
+| **API Key**      | `apiKey`      | Production — service-to-service auth (mid-layer → CitrineOS) |
+| **OIDC**         | `oidc`        | Multi-user auth via OpenID Connect provider                  |
+| **Local Bypass** | `localByPass` | Development only — skips all auth                            |
+
+### API Key Authentication (Recommended for Production)
+
+Validates requests using a shared secret sent via the `X-API-Key` header. Designed for service-to-service communication where only the mid-layer (yatri-energy-backend) calls CitrineOS APIs.
+
+**Config** (`config.json`):
+
+```json
+"authProvider": {
+  "apiKey": "your-strong-secret-key-here"
+}
+```
+
+**Client usage** (mid-layer sends this header with every request):
+
+```
+X-API-Key: your-strong-secret-key-here
+```
+
+**Swagger UI**: Click the "Authorize" button → paste the API key → all requests include the header automatically.
+
+**Excluded routes** (no auth required): `/health`, `/docs`
+
+### Key Files
+
+| File                                                            | Purpose                                  |
+| --------------------------------------------------------------- | ---------------------------------------- |
+| `02_Util/src/authorization/provider/ApiKeyAuthProvider.ts`      | API Key provider implementation          |
+| `02_Util/src/authorization/provider/OIDCAuthProvider.ts`        | OIDC provider implementation             |
+| `02_Util/src/authorization/provider/LocalByPassAuthProvider.ts` | Development bypass provider              |
+| `02_Util/src/authorization/ApiAuthPlugin.ts`                    | Fastify plugin — global `onRequest` hook |
+| `00_Base/src/config/types.ts`                                   | Zod schema for `authProvider` config     |
+| `Server/src/index.ts` → `initApiAuthProvider()`                 | Provider selection logic                 |
+
+---
+
 ## Critical Fixes Reference
 
 ### IdToken Case Normalization (Jan 15, 2026)
