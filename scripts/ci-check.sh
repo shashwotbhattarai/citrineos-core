@@ -164,7 +164,7 @@ run_integ() {
   fi
 
   echo "Starting docker compose..."
-  docker compose -f docker-compose.yml up -d
+  docker compose -f docker-compose-local.yml up -d
 
   echo "Waiting for server to be ready..."
   local retry=0
@@ -186,12 +186,12 @@ run_integ() {
   else
     echo -e "${RED}Health check failed after $max_retries attempts${NC}"
     echo "Container logs:"
-    docker compose -f docker-compose.yml logs --tail=50 || true
+    docker compose -f docker-compose-local.yml logs --tail=50 || true
     record_result "Integration Test" "fail"
   fi
 
   echo "Tearing down containers..."
-  docker compose -f docker-compose.yml down
+  docker compose -f docker-compose-local.yml down
 }
 
 # ─── Main ──────────────────────────────────────────────────
