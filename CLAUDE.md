@@ -1,6 +1,6 @@
 # CitrineOS Core - CSMS Backend Documentation
 
-**Last Updated**: February 16, 2026
+**Last Updated**: February 17, 2026
 **For Claude**: This is the entry point. Reference supporting docs for details.
 
 > **ECOSYSTEM CONTEXT**: See [../CLAUDE.md](../CLAUDE.md) for complete ecosystem overview including yatri-energy-dash-frontend, yatri-energy-app, and citrineos-payment.
