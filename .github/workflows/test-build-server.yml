@@ -27,6 +27,11 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      - name: Create config.json from example
+        run: |
+          mkdir -p ${{ github.workspace }}/Server/data
+          cp ${{ github.workspace }}/Server/src/config/config.json.example ${{ github.workspace }}/Server/data/config.json
+
       - name: Build and Run Docker Compose
         run: docker compose -f ${{ github.workspace }}/Server/docker-compose-local.yml up -d
 
