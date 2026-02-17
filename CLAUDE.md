@@ -11,15 +11,15 @@
 
 ### Supporting Documentation
 
-| Document                                                         | Purpose               | When to Use              |
-| ---------------------------------------------------------------- | --------------------- | ------------------------ |
-| [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md)                   | Config architecture   | Bootstrap vs System      |
-| [INDEX.md](./INDEX.md)                                           | Navigation            | Find the right doc       |
-| [GLOSSARY.md](./GLOSSARY.md)                                     | Terminology           | Clarify idTag vs IdToken |
-| [STATUS.md](./STATUS.md)                                         | Implementation status | Know what's working      |
-| [DEPLOYMENT.md](./DEPLOYMENT.md)                                 | AWS RDS/S3/CI-CD      | Infrastructure setup     |
-| [API_REFERENCE.md](./API_REFERENCE.md)                           | API documentation     | All endpoints            |
-| [OCPP_TROUBLESHOOTING_GUIDE.md](./OCPP_TROUBLESHOOTING_GUIDE.md) | Debug issues          | Common problems          |
+| Document                                                         | Purpose                | When to Use              |
+| ---------------------------------------------------------------- | ---------------------- | ------------------------ |
+| [CONFIG_SEPARATION.md](./CONFIG_SEPARATION.md)                   | Config architecture    | Bootstrap vs System      |
+| [INDEX.md](./INDEX.md)                                           | Navigation             | Find the right doc       |
+| [GLOSSARY.md](./GLOSSARY.md)                                     | Terminology            | Clarify idTag vs IdToken |
+| [STATUS.md](./STATUS.md)                                         | Implementation status  | Know what's working      |
+| [DEPLOYMENT.md](./DEPLOYMENT.md)                                 | AWS RDS/S3/CI-CD/Nginx | Infrastructure setup     |
+| [API_REFERENCE.md](./API_REFERENCE.md)                           | API documentation      | All endpoints            |
+| [OCPP_TROUBLESHOOTING_GUIDE.md](./OCPP_TROUBLESHOOTING_GUIDE.md) | Debug issues           | Common problems          |
 
 ### Standard Values (Use These in All Examples)
 

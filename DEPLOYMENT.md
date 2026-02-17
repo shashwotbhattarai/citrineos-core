@@ -315,6 +315,148 @@ All `.env` variables use the `BOOTSTRAP_*` prefix convention. Docker-compose map
 
 ---
 
+## Nginx + SSL (Let's Encrypt)
+
+### Overview
+
+Nginx runs on the **EC2 host** (not in Docker) to terminate TLS and reverse-proxy to Docker containers on localhost. This enables WSS for OCPP chargers and HTTPS for all APIs using a single Let's Encrypt certificate.
+
+### Architecture
+
+```
+Internet ──► Nginx (EC2 host, terminates TLS) ──► localhost:PORT (Docker containers)
+
+Port 80    → redirect to 443
+Port 443   → 127.0.0.1:8080   (CitrineOS REST API)
+Port 8092  → 127.0.0.1:8092   (OCPP 1.6 WSS, Tenant 1)
+Port 8093  → 127.0.0.1:8093   (OCPP 1.6 WSS, Tenant 2)
+Port 8094  → 127.0.0.1:8094   (OCPP 1.6 WSS, Tenant 3)
+Port 8090  → 127.0.0.1:8090   (Hasura GraphQL + WS subscriptions)
+Port 15672 → 127.0.0.1:15672  (RabbitMQ Management)
+```
+
+### Why Docker Ports Bind to 127.0.0.1
+
+Docker-compose ports are set to `127.0.0.1:PORT:PORT` (not `PORT:PORT`). This is required because:
+
+1. **Port conflict**: Docker and nginx can't both bind to `0.0.0.0` on the same port
+2. **Security**: Prevents unencrypted external access — all traffic must go through nginx (TLS)
+
+Without this, Docker grabs the port on all interfaces and nginx can't listen on it.
+
+### Files
+
+| File                        | Purpose                                   |
+| --------------------------- | ----------------------------------------- |
+| `Server/nginx/nginx.conf`   | Nginx server blocks for all proxied ports |
+| `Server/nginx/setup.sh`     | One-time EC2 setup script                 |
+| `Server/docker-compose.yml` | Port bindings set to `127.0.0.1`          |
+
+### Prerequisites
+
+1. **DNS A record**: `test.yatri-energy-core.yatrimotorcycle.com` → EC2 public IP
+2. **EC2 Security Group** — open inbound ports:
+
+| Port  | Service                          |
+| ----- | -------------------------------- |
+| 80    | HTTP (ACME challenge + redirect) |
+| 443   | HTTPS (CitrineOS API)            |
+| 8090  | Hasura GraphQL                   |
+| 8092  | OCPP 1.6 WSS (Tenant 1)          |
+| 8093  | OCPP 1.6 WSS (Tenant 2)          |
+| 8094  | OCPP 1.6 WSS (Tenant 3)          |
+| 15672 | RabbitMQ Management              |
+
+### Setup
+
+```bash
+ssh ubuntu@13.204.177.82
+cd /path/to/citrineos-core/Server
+sudo bash nginx/setup.sh
+```
+
+The script will:
+
+1. Install nginx + certbot
+2. Obtain a Let's Encrypt certificate (standalone mode)
+3. Install the nginx config to `/etc/nginx/sites-available/citrineos`
+4. Start nginx
+5. Set up a daily certbot auto-renewal cron (3 AM)
+6. Restart Docker containers with loopback-only port bindings
+
+### Verification
+
+```bash
+# HTTPS health check
+curl https://test.yatri-energy-core.yatrimotorcycle.com/health
+
+# WSS OCPP connection
+wscat -c wss://test.yatri-energy-core.yatrimotorcycle.com:8092/ocpp/yatri-1-ioc-1-sec1 \
+  -s ocpp1.6
+
+# Hasura
+curl https://test.yatri-energy-core.yatrimotorcycle.com:8090/healthz
+
+# RabbitMQ Management
+# Open: https://test.yatri-energy-core.yatrimotorcycle.com:15672
+```
+
+### Charger Configuration
+
+After enabling WSS, configure chargers to connect via:
+
+```
+wss://test.yatri-energy-core.yatrimotorcycle.com:8092/<charger-identifier>
+```
+
+The nginx WebSocket proxy passes through:
+
+- `Upgrade` + `Connection: upgrade` headers
+- `Sec-WebSocket-Protocol` (OCPP subprotocol negotiation)
+- `Authorization` header (OCPP Basic Auth / Security Profile 1)
+- 24-hour read/send timeout (persistent charger connections)
+
+### Certificate Renewal
+
+Certbot auto-renewal runs daily at 3 AM via cron. On renewal, nginx is reloaded automatically. To test:
+
+```bash
+sudo certbot renew --dry-run
+```
+
+### Troubleshooting
+
+#### Nginx won't start — "Address already in use"
+
+**Cause**: Docker is still binding to `0.0.0.0` on that port.
+**Fix**: Ensure `docker-compose.yml` has `127.0.0.1:PORT:PORT` bindings, then restart containers:
+
+```bash
+cd Server
+docker compose down && docker compose up -d
+```
+
+#### Certificate issuance fails
+
+**Cause**: Port 80 not open, or DNS not pointing to this server.
+**Fix**: Check security group allows port 80 inbound. Verify DNS:
+
+```bash
+dig test.yatri-energy-core.yatrimotorcycle.com
+```
+
+#### Charger can't connect via WSS
+
+**Cause**: Security group doesn't allow the WSS port, or charger firmware doesn't support TLS 1.2+.
+**Fix**: Open the port in EC2 security group. Check charger TLS capabilities.
+
+#### WebSocket drops after ~60 seconds
+
+**Cause**: Default nginx `proxy_read_timeout` is 60s.
+**Fix**: Already set to `86400s` (24h) in `nginx.conf`. If using a load balancer in front, check its idle timeout too.
+
+---
+
 ## Security Best Practices
 
 1. Never commit `.env` files to version control
