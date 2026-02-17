@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 Yatri Motorcycles
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Yatri Energy Backend HTTP Client Service
  * Handles wallet integration for CitrineOS charging operations
