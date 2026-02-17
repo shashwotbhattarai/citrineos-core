@@ -50,6 +50,10 @@ module.exports = tseslint.config(
       'Server/src/config/sequelize.bridge.config.js',
       '00_Base/json-schema-processor-1.6.js',
       '00_Base/json-schema-processor-2.0.1.js',
+      'Server/src/config/envs/directus.docker.ts',
+      'Server/src/config/envs/docker.ts',
+      'Server/src/config/envs/local.ts',
+      'Server/src/config/envs/swarm.docker.ts',
     ],
   },
   // Disable ESLint rules that conflict with Prettier
