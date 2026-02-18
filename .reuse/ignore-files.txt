@@ -114,3 +114,5 @@ Swarm/data/directus/uploads/
 *.pdf
 Server/.env.example
 Server/src/config/config.json.example
+
+.github/CODEOWNERS
