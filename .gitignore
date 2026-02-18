@@ -278,6 +278,11 @@ atlassian-ide-plugin.xml
 # SonarLint plugin
 .idea/sonarlint/
 
+# SonarQube/SonarCloud scanner artifacts
+.scannerwork/
+sonar-report.json
+sonar-scanner.log
+
 # Crashlytics plugin (for Android Studio and IntelliJ)
 com_crashlytics_export_strings.xml
 crashlytics.properties

@@ -15,8 +15,32 @@ env:
   HASURA_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/yatri-energy-hasura
 
 jobs:
-  build-and-push:
+  sonarcloud:
+    name: SonarQube Analysis
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for full blame/history analysis
+
+      - name: Run SonarQube scan
+        uses: sonarsource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Check SonarQube quality gate
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: sonarcloud # Only run if Sonar quality gate passes
     permissions:
       contents: read
 
@@ -69,11 +93,13 @@ jobs:
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-      - name: Summary
+      - name: Write job summary
         run: |
           echo "## Docker Images Pushed Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**CitrineOS Image:** \`${{ env.CITRINE_IMAGE }}:cicd\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Hasura Image:** \`${{ env.HASURA_IMAGE }}:cicd\`" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| CitrineOS | \`${{ env.CITRINE_IMAGE }}:cicd\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hasura    | \`${{ env.HASURA_IMAGE }}:cicd\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Watchtower will automatically pull and deploy these images on EC2." >> $GITHUB_STEP_SUMMARY
+          echo "> Watchtower will automatically pull and deploy these images on EC2." >> $GITHUB_STEP_SUMMARY
