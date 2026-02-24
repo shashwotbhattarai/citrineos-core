@@ -5,11 +5,11 @@
 #!/usr/bin/env bash
 # CitrineOS Nginx + Let's Encrypt Setup Script
 # Run on EC2 host (Ubuntu) as root or with sudo
-# Domain: test.yatri-energy-core.yatrimotorcycle.com
+# Domain: core.api.test.yatrienergy.com
 
 set -euo pipefail
 
-DOMAIN="test.yatri-energy-core.yatrimotorcycle.com"
+DOMAIN="core.api.test.yatrienergy.com"
 EMAIL="shashwot@yatrimotorcycle.com"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
