@@ -131,6 +131,7 @@ services:
         condition: service_healthy
     environment:
       HASURA_GRAPHQL_DATABASE_URL: postgres://${BOOTSTRAP_RDS_USERNAME}:${BOOTSTRAP_RDS_PASSWORD}@${BOOTSTRAP_RDS_HOST}:${BOOTSTRAP_RDS_PORT}/${BOOTSTRAP_RDS_DATABASE}?sslmode=require
+      HASURA_GRAPHQL_ADMIN_SECRET: ${BOOTSTRAP_HASURA_ADMIN_SECRET}
       HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
       HASURA_GRAPHQL_DEV_MODE: ${BOOTSTRAP_HASURA_DEV_MODE}
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
