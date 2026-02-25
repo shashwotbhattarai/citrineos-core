@@ -218,11 +218,13 @@ export class TransactionService {
         return response;
       }
 
-      // Check concurrent transactions
-      const hasConcurrent = await this._hasConcurrentTransactions(tenantId, authorization.id);
-      if (hasConcurrent) {
-        response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.ConcurrentTx;
-        return response;
+      // Check concurrent transactions (only if concurrentTransaction flag is true)
+      if (authorization.concurrentTransaction === true) {
+        const hasConcurrent = await this._hasConcurrentTransactions(tenantId, authorization.id);
+        if (hasConcurrent) {
+          response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.ConcurrentTx;
+          return response;
+        }
       }
 
       // Check wallet balance (Yatri Energy Integration)

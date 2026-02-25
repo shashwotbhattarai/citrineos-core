@@ -279,7 +279,9 @@ describe('TransactionService', () => {
     });
 
     it('should return ConcurrentTx status when an active transaction exists', async () => {
-      const authorization = anAuthorization();
+      const authorization = anAuthorization((auth) => {
+        auth.concurrentTransaction = true;
+      });
       authorizationRepository.readAllByQuerystring.mockResolvedValue([authorization]);
       transactionEventRepository.readAllActiveTransactionsByAuthorizationId.mockResolvedValue([
         aTransaction(),
