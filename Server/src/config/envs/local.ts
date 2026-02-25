@@ -1,3 +1,8 @@
+// @ts-nocheck — This file is kept as REFERENCE ONLY.
+// It is no longer imported or used by the server.
+// Config is loaded from config.json in storage (S3/local).
+// See Server/src/config/index.ts for the active config loading logic.
+
 // SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -242,6 +247,13 @@ export function createLocalConfig() {
     },
     userPreferences: {
       // None by default
+    },
+    yatriEnergy: {
+      baseUrl: process.env.YATRI_ENERGY_BASE_URL || '',
+      apiKey: process.env.YATRI_ENERGY_API_KEY || '',
+      timeout: parseInt(process.env.YATRI_ENERGY_TIMEOUT || '10000', 10),
+      minimumBalance: parseFloat(process.env.YATRI_MINIMUM_BALANCE || '100.0'),
+      enabled: process.env.YATRI_WALLET_INTEGRATION_ENABLED || 'false',
     },
   });
 }

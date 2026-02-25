@@ -394,7 +394,7 @@ export abstract class AbstractModuleApi<T extends IModule> implements IModuleApi
       HttpMethod.Get,
     );
 
-    const systemConfigJsonSchema: any = zodToJsonSchema(systemConfigSchema, {
+    const systemConfigJsonSchema: any = zodToJsonSchema(systemConfigSchema as any, {
       name: 'SystemConfigSchema',
       $refStrategy: 'none',
     });

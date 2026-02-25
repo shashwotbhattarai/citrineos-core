@@ -44,15 +44,15 @@ export class KafkaReceiver extends AbstractMessageHandler implements IMessageHan
     this._circuitBreaker.onStateChange(this._onCircuitBreakerStateChange.bind(this));
     this._consumerMap = new Map<string, Consumer>();
     this._client = new Kafka({
-      brokers: this._config.util.messageBroker.kafka?.brokers || [],
+      brokers: this._config.util.messageBroker?.kafka?.brokers || [],
       ssl: true,
       sasl: {
         mechanism: 'plain',
-        username: this._config.util.messageBroker.kafka?.sasl.username || '',
-        password: this._config.util.messageBroker.kafka?.sasl.password || '',
+        username: this._config.util.messageBroker?.kafka?.sasl.username || '',
+        password: this._config.util.messageBroker?.kafka?.sasl.password || '',
       },
     });
-    this._topicName = `${this._config.util.messageBroker.kafka?.topicPrefix}-${this._config.util.messageBroker.kafka?.topicName}`;
+    this._topicName = `${this._config.util.messageBroker?.kafka?.topicPrefix}-${this._config.util.messageBroker?.kafka?.topicName}`;
     this._initAdmin();
   }
 

@@ -44,6 +44,12 @@ export class EVDriverOcpp201Api
     callbackUrl?: string,
     tenantId: number = DEFAULT_TENANT_ID,
   ): Promise<IMessageConfirmation[]> {
+    // Normalize idToken to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idToken?.idToken) {
+      request.idToken.idToken = request.idToken.idToken.toLowerCase();
+    }
+
     const results: IMessageConfirmation[] = [];
 
     for (const i of identifier) {

@@ -9,16 +9,17 @@ module.exports = (async () => {
   try {
     const bootstrapConfig = loadBootstrapConfig();
 
-    const { host, port, database, dialect, username, password } = bootstrapConfig.database;
+    const { host, port, database, dialect, username, password, ssl } = bootstrapConfig.database;
 
     console.log('[sequelize.bridge.config.js] Loaded config for DB:', {
       host,
       port,
       database,
       dialect,
+      ssl,
     });
 
-    return {
+    const config = {
       username,
       password,
       database,
@@ -27,6 +28,18 @@ module.exports = (async () => {
       dialect,
       logging: true,
     };
+
+    // Add SSL configuration if enabled
+    if (ssl) {
+      config.dialectOptions = {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false,
+        },
+      };
+    }
+
+    return config;
   } catch (error) {
     console.error('[sequelize.bridge.config.js] Failed to load bootstrap configuration:', error);
     throw error;

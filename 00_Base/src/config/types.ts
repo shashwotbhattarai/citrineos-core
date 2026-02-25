@@ -160,6 +160,9 @@ export const systemConfigInputSchema = z.object({
       .refine((obj) => obj.memory || obj.redis, {
         message: 'A cache implementation must be set',
       }),
+    // AMQP/Kafka message broker config
+    // NOTE: amqp.url and amqp.exchange are now BOOTSTRAP config — read from process.env
+    // (AMQP_URL, AMQP_EXCHANGE). They are NOT in config.json. See .env.example.
     messageBroker: z
       .object({
         kafka: z
@@ -174,16 +177,17 @@ export const systemConfigInputSchema = z.object({
             }),
           })
           .optional(),
-        amqp: z
-          .object({
-            url: z.string(),
-            exchange: z.string(),
-          })
-          .optional(),
+        // amqp: z
+        //   .object({
+        //     url: z.string(),
+        //     exchange: z.string(),
+        //   })
+        //   .optional(),
       })
-      .refine((obj) => obj.kafka || obj.amqp, {
-        message: 'A message broker implementation must be set',
-      }),
+      .optional(),
+    // .refine((obj) => obj.kafka || obj.amqp, {
+    //   message: 'A message broker implementation must be set',
+    // }),
     authProvider: z
       .object({
         oidc: z
@@ -195,9 +199,11 @@ export const systemConfigInputSchema = z.object({
             rateLimit: z.boolean().default(false).optional(),
           })
           .optional(),
+        // apiKey: z.string().optional(), // BOOTSTRAP — actual key read from process.env.CITRINEOS_API_KEY
+        apiKey: z.boolean().default(false).optional(), // true = use API key auth (key from process.env)
         localByPass: z.boolean().default(false).optional(),
       })
-      .refine((obj) => obj.oidc || obj.localByPass, {
+      .refine((obj) => obj.oidc || obj.apiKey || obj.localByPass, {
         message: 'An auth provider implementation must be set',
       }),
     swagger: z
@@ -267,6 +273,21 @@ export const systemConfigInputSchema = z.object({
   }),
   rbacRulesFileName: z.string().default('rbac-rules.json').optional(),
   rbacRulesDir: z.string().optional(),
+  // Yatri Energy integration config
+  // NOTE: Bootstrap fields (baseUrl, apiKey, enabled, rabbitmqUrl, rabbitmqExchange,
+  // sqsRegion, sqsQueueUrl) are NOT in config.json — they are read from process.env.
+  // Only system config fields (timeout, minimumBalance) remain here.
+  yatriEnergy: z.object({
+    // baseUrl: z.string(),              // BOOTSTRAP — process.env.YATRI_ENERGY_BASE_URL
+    // apiKey: z.string(),               // BOOTSTRAP — process.env.YATRI_ENERGY_API_KEY
+    timeout: z.number().int().positive(),
+    minimumBalance: z.number().positive(),
+    // enabled: z.string(),              // BOOTSTRAP — process.env.YATRI_WALLET_INTEGRATION_ENABLED
+    // sqsRegion: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_SQS_REGION
+    // sqsQueueUrl: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_SQS_QUEUE_URL
+    // rabbitmqUrl: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_RABBITMQ_URL
+    // rabbitmqExchange: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE
+  }),
 });
 
 export type SystemConfigInput = z.infer<typeof systemConfigInputSchema>;
@@ -436,6 +457,9 @@ export const systemConfigSchema = z
         .refine((obj) => obj.memory || obj.redis, {
           message: 'A cache implementation must be set',
         }),
+      // AMQP/Kafka message broker config
+      // NOTE: amqp.url and amqp.exchange are now BOOTSTRAP config — read from process.env
+      // (AMQP_URL, AMQP_EXCHANGE). They are NOT in config.json. See .env.example.
       messageBroker: z
         .object({
           kafka: z
@@ -450,16 +474,17 @@ export const systemConfigSchema = z
               }),
             })
             .optional(),
-          amqp: z
-            .object({
-              url: z.string(),
-              exchange: z.string(),
-            })
-            .optional(),
+          // amqp: z
+          //   .object({
+          //     url: z.string(),
+          //     exchange: z.string(),
+          //   })
+          //   .optional(),
         })
-        .refine((obj) => obj.kafka || obj.amqp, {
-          message: 'A message broker implementation must be set',
-        }),
+        .optional(),
+      // .refine((obj) => obj.kafka || obj.amqp, {
+      //   message: 'A message broker implementation must be set',
+      // }),
       authProvider: z
         .object({
           oidc: z
@@ -471,9 +496,11 @@ export const systemConfigSchema = z
               rateLimit: z.boolean(),
             })
             .optional(),
+          // apiKey: z.string().optional(), // BOOTSTRAP — actual key read from process.env.CITRINEOS_API_KEY
+          apiKey: z.boolean().optional(), // true = use API key auth (key from process.env)
           localByPass: z.boolean().default(false).optional(),
         })
-        .refine((obj) => obj.oidc || obj.localByPass, {
+        .refine((obj) => obj.oidc || obj.apiKey || obj.localByPass, {
           message: 'An auth provider implementation must be set',
         }),
       swagger: z
@@ -550,6 +577,21 @@ export const systemConfigSchema = z
     rbacRulesFileName: z.string().optional(),
     rbacRulesDir: z.string().optional(),
     oidcClient: oidcClientConfigSchema,
+    // Yatri Energy integration config
+    // NOTE: Bootstrap fields (baseUrl, apiKey, enabled, rabbitmqUrl, rabbitmqExchange,
+    // sqsRegion, sqsQueueUrl) are NOT in config.json — they are read from process.env.
+    // Only system config fields (timeout, minimumBalance) remain here.
+    yatriEnergy: z.object({
+      // baseUrl: z.string(),              // BOOTSTRAP — process.env.YATRI_ENERGY_BASE_URL
+      // apiKey: z.string(),               // BOOTSTRAP — process.env.YATRI_ENERGY_API_KEY
+      timeout: z.number().int().positive(),
+      minimumBalance: z.number().positive(),
+      // enabled: z.string(),              // BOOTSTRAP — process.env.YATRI_WALLET_INTEGRATION_ENABLED
+      // sqsRegion: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_SQS_REGION
+      // sqsQueueUrl: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_SQS_QUEUE_URL
+      // rabbitmqUrl: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_RABBITMQ_URL
+      // rabbitmqExchange: z.string().optional(), // BOOTSTRAP — process.env.YATRI_ENERGY_RABBITMQ_EXCHANGE
+    }),
   })
   .refine((obj) => obj.maxCachingSeconds >= obj.maxCallLengthSeconds, {
     message: 'maxCachingSeconds cannot be less than maxCallLengthSeconds',

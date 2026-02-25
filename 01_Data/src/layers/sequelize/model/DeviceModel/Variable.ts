@@ -14,10 +14,14 @@ import { BaseModelWithTenant } from '../BaseModelWithTenant';
   indexes: [
     {
       unique: true,
-      fields: ['name'],
+      fields: ['name', 'tenantId'],
       where: {
         instance: null,
       },
+    },
+    {
+      unique: true,
+      fields: ['name', 'instance', 'tenantId'],
     },
   ],
 })
@@ -30,13 +34,11 @@ export class Variable extends BaseModelWithTenant implements OCPP2_0_1.VariableT
 
   @Column({
     type: DataType.STRING,
-    unique: 'name_instance',
   })
   declare name: string;
 
   @Column({
     type: DataType.STRING,
-    unique: 'name_instance',
   })
   declare instance?: string | null;
 

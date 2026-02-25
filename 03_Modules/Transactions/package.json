@@ -19,6 +19,7 @@
   "dependencies": {
     "@citrineos/base": "1.8.0",
     "@citrineos/data": "1.8.0",
-    "@citrineos/util": "1.8.0"
+    "@citrineos/util": "1.8.0",
+    "uuid": "^9.0.0"
   }
 }

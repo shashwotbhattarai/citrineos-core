@@ -20,10 +20,14 @@ import { EvseType } from './EvseType';
   indexes: [
     {
       unique: true,
-      fields: ['name'],
+      fields: ['name', 'tenantId'],
       where: {
         instance: null,
       },
+    },
+    {
+      unique: true,
+      fields: ['name', 'instance', 'tenantId'],
     },
   ],
 })
@@ -39,13 +43,11 @@ export class Component
 
   @Column({
     type: DataType.STRING,
-    unique: 'name_instance',
   })
   declare name: string;
 
   @Column({
     type: DataType.STRING,
-    unique: 'name_instance',
   })
   declare instance?: string | null;
 

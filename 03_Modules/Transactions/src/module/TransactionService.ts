@@ -10,6 +10,8 @@ import {
   IReservationRepository,
   IOCPPMessageRepository,
 } from '@citrineos/data';
+import { YatriEnergyClient } from '@citrineos/util';
+import { BootstrapConfig, SystemConfig } from '@citrineos/base';
 import {
   AuthorizationStatusType,
   IAuthorizationDto,
@@ -29,6 +31,7 @@ export class TransactionService {
   private _ocppMessageRepository: IOCPPMessageRepository;
   private _logger: Logger<ILogObj>;
   private _authorizers: IAuthorizer[];
+  private _bootstrapConfig?: BootstrapConfig;
 
   constructor(
     transactionEventRepository: ITransactionEventRepository,
@@ -38,6 +41,7 @@ export class TransactionService {
     realTimeAuthorizer: IAuthorizer,
     authorizers?: IAuthorizer[],
     logger?: Logger<ILogObj>,
+    bootstrapConfig?: BootstrapConfig,
   ) {
     this._transactionEventRepository = transactionEventRepository;
     this._authorizeRepository = authorizeRepository;
@@ -47,6 +51,7 @@ export class TransactionService {
       ? logger.getSubLogger({ name: this.constructor.name })
       : new Logger<ILogObj>({ name: this.constructor.name });
     this._authorizers = [realTimeAuthorizer, ...(authorizers || [])];
+    this._bootstrapConfig = bootstrapConfig;
   }
 
   async recalculateTotalKwh(tenantId: number, transactionDbId: number) {
@@ -168,6 +173,7 @@ export class TransactionService {
   async authorizeOcpp16IdToken(
     context: IMessageContext,
     idToken: string,
+    systemConfig?: SystemConfig,
   ): Promise<OCPP1_6.StartTransactionResponse> {
     const response: OCPP1_6.StartTransactionResponse = {
       idTagInfo: {
@@ -212,10 +218,19 @@ export class TransactionService {
         return response;
       }
 
-      // Check concurrent transactions
-      const hasConcurrent = await this._hasConcurrentTransactions(tenantId, authorization.id);
-      if (hasConcurrent) {
-        response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.ConcurrentTx;
+      // Check concurrent transactions (only if concurrentTransaction flag is true)
+      if (authorization.concurrentTransaction === true) {
+        const hasConcurrent = await this._hasConcurrentTransactions(tenantId, authorization.id);
+        if (hasConcurrent) {
+          response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.ConcurrentTx;
+          return response;
+        }
+      }
+
+      // Check wallet balance (Yatri Energy Integration)
+      const walletCheckPassed = await this._checkYatriWalletBalance(idToken, context, systemConfig);
+      if (!walletCheckPassed) {
+        response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.Blocked;
         return response;
       }
 
@@ -245,6 +260,53 @@ export class TransactionService {
       this._logger.error(`Authorization for idToken ${idToken} failed.`, e);
       response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.Invalid;
       return response;
+    }
+  }
+
+  /**
+   * Check wallet balance using Yatri Energy backend
+   */
+  private async _checkYatriWalletBalance(
+    idToken: string,
+    context: IMessageContext,
+    systemConfig?: SystemConfig,
+  ): Promise<boolean> {
+    try {
+      if (!this._bootstrapConfig?.yatriEnergy?.enabled) {
+        this._logger.debug('Yatri Energy wallet integration is disabled, skipping wallet check');
+        return true; // Skip wallet check if integration is disabled
+      }
+
+      // Create Yatri Energy client
+      const yatriClient = new YatriEnergyClient(
+        this._bootstrapConfig.yatriEnergy.baseUrl as string,
+        systemConfig?.yatriEnergy?.timeout ?? 10000,
+        this._bootstrapConfig.yatriEnergy.apiKey as string,
+        this._logger,
+      );
+
+      // Check minimum balance using the YatriEnergyClient method
+      const minimumBalance = systemConfig?.yatriEnergy?.minimumBalance ?? 100.0;
+      const hasMinimumBalance = await yatriClient.checkMinimumBalance(idToken, minimumBalance);
+
+      if (!hasMinimumBalance) {
+        this._logger.warn(`Wallet balance check failed for idToken: ${idToken}`, {
+          minimumRequired: minimumBalance,
+          stationId: context.stationId,
+        });
+        return false;
+      }
+
+      this._logger.debug(`Wallet balance check passed for idToken: ${idToken}`, {
+        minimumRequired: minimumBalance,
+        stationId: context.stationId,
+      });
+
+      return true;
+    } catch (error) {
+      this._logger.error(`Yatri Energy wallet check failed for idToken: ${idToken}`, error);
+      // On error, allow the transaction to proceed (fail-safe behavior)
+      return true;
     }
   }
 

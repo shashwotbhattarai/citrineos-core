@@ -1,194 +1,167 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
+# SPDX-FileCopyrightText: 2025 Yatri Motorcycles
 #
 # SPDX-License-Identifier: Apache-2.0
+#
+# Docker Compose for EC2 Production Deployment with Watchtower Auto-Update
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in your credentials
+#   2. Login to Docker Hub: docker login -u YOUR_USERNAME
+#   3. Run: docker compose up -d
+#
+# Prerequisites:
+#   - AWS RDS PostgreSQL instance with PostGIS extension
+#   - AWS S3 bucket for config storage
+#   - Docker Hub account with access to private yatri-energy-citrine image
+#
+# Watchtower will automatically pull and deploy new images tagged :cicd
+#
+# STARTUP ORDER (CRITICAL for metadata to work):
+#   1. amqp-broker (RabbitMQ)
+#   2. citrine (runs DB migrations, creates tables)
+#   3. graphql-engine (applies Hasura metadata to existing tables)
+#   4. watchtower (monitors for updates)
+#
+# If metadata fails, it means citrine hasn't created the tables yet.
+# Hasura MUST start AFTER citrine is healthy.
+#
+# CONFIG SEPARATION:
+#   Bootstrap (.env with BOOTSTRAP_* prefix) = secrets, infrastructure, healthcheck deps
+#   System (config.json in S3) = application behavior
+#   No hardcoded defaults - all values MUST be in .env
+
 services:
   amqp-broker:
     image: rabbitmq:3-management
     ports:
-      - 15672:15672
-      - 5672:5672
+      - 127.0.0.1:25672:15672
+      - 127.0.0.1:5672:5672
     environment:
-      RABBITMQ_DEFAULT_USER: 'guest'
-      RABBITMQ_DEFAULT_PASS: 'guest'
+      RABBITMQ_DEFAULT_USER: ${BOOTSTRAP_RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${BOOTSTRAP_RABBITMQ_PASS}
     volumes:
-      - ./data/rabbitmq:/var/lib/rabbitmq
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q check_port_connectivity
       interval: 10s
       timeout: 10s
       retries: 3
-
-  ocpp-db:
-    image: postgis/postgis:16-3.5
-    platform: linux/amd64
-    ports:
-      - 5432:5432
-    volumes:
-      - ./data/postgresql/pgdata:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: citrine
-      POSTGRES_USER: citrine
-      POSTGRES_PASSWORD: 'citrine'
-    healthcheck:
-      test: 'pg_isready --username=citrine'
-      interval: 5s
-      timeout: 10s
-      retries: 5
+    restart: unless-stopped
 
   citrine:
-    build:
-      context: ../
-      dockerfile: ./Server/deploy.Dockerfile
-    volumes:
-      - ../package-lock.json:/usr/local/apps/citrineos/package-lock-host.json
-      - ../package.json:/usr/local/apps/citrineos/package.json
-      - ../tsconfig.json:/usr/local/apps/citrineos/tsconfig.json
-      - ../tsconfig.build.json:/usr/local/apps/citrineos/tsconfig.build.json
-      - ../Server:/usr/local/apps/citrineos/Server
-      - ../00_Base:/usr/local/apps/citrineos/00_Base
-      - ../01_Data:/usr/local/apps/citrineos/01_Data
-      - ../02_Util:/usr/local/apps/citrineos/02_Util
-      - ../03_Modules/Certificates:/usr/local/apps/citrineos/03_Modules/Certificates
-      - ../03_Modules/Configuration:/usr/local/apps/citrineos/03_Modules/Configuration
-      - ../03_Modules/EVDriver:/usr/local/apps/citrineos/03_Modules/EVDriver
-      - ../03_Modules/Monitoring:/usr/local/apps/citrineos/03_Modules/Monitoring
-      - ../03_Modules/OcppRouter:/usr/local/apps/citrineos/03_Modules/OcppRouter
-      - ../03_Modules/Reporting:/usr/local/apps/citrineos/03_Modules/Reporting
-      - ../03_Modules/SmartCharging:/usr/local/apps/citrineos/03_Modules/SmartCharging
-      - ../03_Modules/Transactions:/usr/local/apps/citrineos/03_Modules/Transactions
-      - /usr/local/apps/citrineos/node_modules
-      - /usr/local/apps/citrineos/Server/node_modules
-      - /usr/local/apps/citrineos/00_Base/node_modules
-      - /usr/local/apps/citrineos/01_Data/node_modules
-      - /usr/local/apps/citrineos/02_Util/node_modules
-      - /usr/local/apps/citrineos/03_Modules/Certificates/node_modules
-      - /usr/local/apps/citrineos/03_Modules/Configuration/node_modules
-      - /usr/local/apps/citrineos/03_Modules/EVDriver/node_modules
-      - /usr/local/apps/citrineos/03_Modules/Monitoring/node_modules
-      - /usr/local/apps/citrineos/03_Modules/OcppRouter/node_modules
-      - /usr/local/apps/citrineos/03_Modules/Reporting/node_modules
-      - /usr/local/apps/citrineos/03_Modules/SmartCharging/node_modules
-      - /usr/local/apps/citrineos/03_Modules/Transactions/node_modules
-      - /usr/local/apps/citrineos/dist/
-      - /usr/local/apps/citrineos/Server/dist/
-      - /usr/local/apps/citrineos/00_Base/dist/
-      - /usr/local/apps/citrineos/01_Data/dist/
-      - /usr/local/apps/citrineos/02_Util/dist/
-      - /usr/local/apps/citrineos/03_Modules/Certificates/dist/
-      - /usr/local/apps/citrineos/03_Modules/Configuration/dist/
-      - /usr/local/apps/citrineos/03_Modules/EVDriver/dist/
-      - /usr/local/apps/citrineos/03_Modules/Monitoring/dist/
-      - /usr/local/apps/citrineos/03_Modules/OcppRouter/dist/
-      - /usr/local/apps/citrineos/03_Modules/Reporting/dist/
-      - /usr/local/apps/citrineos/03_Modules/SmartCharging/dist/
-      - /usr/local/apps/citrineos/03_Modules/Transactions/dist/
+    image: ${BOOTSTRAP_DOCKERHUB_USERNAME}/yatri-energy-citrine:cicd
     environment:
       APP_NAME: 'all'
       APP_ENV: 'docker'
-      # Add AWS region (required by the SDK)
-      AWS_REGION: us-east-1
-      # Skip authentication completely - use public access
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      # Database Strategy
       DB_STRATEGY: 'migrate'
-      # Bootstrap Configuration Environment Variables
-      BOOTSTRAP_CITRINEOS_DATABASE_HOST: 'ocpp-db'
+      # === AWS RDS DATABASE CONFIGURATION ===
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: ${BOOTSTRAP_RDS_HOST}
+      BOOTSTRAP_CITRINEOS_DATABASE_PORT: ${BOOTSTRAP_RDS_PORT}
+      BOOTSTRAP_CITRINEOS_DATABASE_NAME: ${BOOTSTRAP_RDS_DATABASE}
+      BOOTSTRAP_CITRINEOS_DATABASE_USERNAME: ${BOOTSTRAP_RDS_USERNAME}
+      BOOTSTRAP_CITRINEOS_DATABASE_PASSWORD: ${BOOTSTRAP_RDS_PASSWORD}
+      BOOTSTRAP_CITRINEOS_DATABASE_DIALECT: 'postgres'
+      BOOTSTRAP_CITRINEOS_DATABASE_SSL: ${BOOTSTRAP_RDS_SSL}
+      BOOTSTRAP_CITRINEOS_DATABASE_SYNC: 'false'
+      BOOTSTRAP_CITRINEOS_DATABASE_ALTER: 'false'
+      BOOTSTRAP_CITRINEOS_DATABASE_MAX_RETRIES: ${BOOTSTRAP_RDS_MAX_RETRIES}
+      BOOTSTRAP_CITRINEOS_DATABASE_RETRY_DELAY: ${BOOTSTRAP_RDS_RETRY_DELAY}
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: ${BOOTSTRAP_RDS_POOL_MAX}
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: ${BOOTSTRAP_RDS_POOL_MIN}
+      # Config filename
       BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: 'config.json'
-      # CITRINEOS_CONFIG_DIR: '/custom/config/path'  # Optional - uncomment if needed
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 'local'
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: '/data'
+      # === AWS S3 FILE STORAGE CONFIGURATION ===
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: 's3'
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_REGION: ${BOOTSTRAP_AWS_REGION}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_DEFAULT_BUCKET_NAME: ${BOOTSTRAP_S3_BUCKET_NAME}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_FORCE_PATH_STYLE: 'false'
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_ACCESS_KEY_ID: ${BOOTSTRAP_AWS_ACCESS_KEY_ID}
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_S3_SECRET_ACCESS_KEY: ${BOOTSTRAP_AWS_SECRET_ACCESS_KEY}
+      # AWS Configuration (for SDK)
+      AWS_REGION: ${BOOTSTRAP_AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${BOOTSTRAP_AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${BOOTSTRAP_AWS_SECRET_ACCESS_KEY}
+      # === INTERNAL RABBITMQ (CitrineOS message broker) ===
+      # AMQP_URL and AMQP_EXCHANGE are built here and read by code via process.env
+      AMQP_URL: amqp://${BOOTSTRAP_RABBITMQ_USER}:${BOOTSTRAP_RABBITMQ_PASS}@amqp-broker:5672
+      AMQP_EXCHANGE: ${BOOTSTRAP_AMQP_EXCHANGE}
+      # === API AUTHENTICATION ===
+      # API key secret for service-to-service auth (config.json just sets apiKey: true)
+      CITRINEOS_API_KEY: ${BOOTSTRAP_CITRINEOS_API_KEY}
+      # === YATRI ENERGY INTEGRATION (Bootstrap - secrets & healthcheck) ===
+      # NOTE: timeout and minimumBalance are in config.json, NOT here
+      YATRI_ENERGY_BASE_URL: ${BOOTSTRAP_YATRI_ENERGY_BASE_URL}
+      YATRI_ENERGY_API_KEY: ${BOOTSTRAP_YATRI_ENERGY_API_KEY}
+      YATRI_WALLET_INTEGRATION_ENABLED: ${BOOTSTRAP_YATRI_WALLET_INTEGRATION_ENABLED}
+      # AWS SQS Configuration (Async Payment Processing)
+      YATRI_ENERGY_SQS_REGION: ${BOOTSTRAP_YATRI_ENERGY_SQS_REGION}
+      YATRI_ENERGY_SQS_QUEUE_URL: ${BOOTSTRAP_YATRI_ENERGY_SQS_QUEUE_URL}
+      # Midlayer RabbitMQ (for async payment queue)
+      YATRI_ENERGY_RABBITMQ_URL: ${BOOTSTRAP_YATRI_ENERGY_RABBITMQ_URL}
+      YATRI_ENERGY_RABBITMQ_EXCHANGE: ${BOOTSTRAP_YATRI_ENERGY_RABBITMQ_EXCHANGE}
     depends_on:
-      ocpp-db:
-        condition: service_healthy
       amqp-broker:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     ports:
-      - 8080:8080
-      - 8081:8081
-      - 8082:8082
-      - 8443:8443
-      - 8444:8444
-      - 9229:9229
-      - 8092:8092
+      - 127.0.0.1:8080:8080
+      - 127.0.0.1:8081:8081
+      - 127.0.0.1:8082:8082
+      - 127.0.0.1:8443:8443
+      - 127.0.0.1:8444:8444
+      - 127.0.0.1:18092:8092
+      - 127.0.0.1:18093:8093
+      - 127.0.0.1:18094:8094
+      - 127.0.0.1:8095:8095
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "const net = require(\"net\"); const client = net.createConnection(8080, \"127.0.0.1\", () => { client.end(); process.exit(0); }); client.on(\"error\", () => process.exit(1)); client.setTimeout(5000, () => { client.destroy(); process.exit(1); });"']
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
-
-  minio:
-    image: minio/minio
-    container_name: minio
-    ports:
-      - '9000:9000'
-      - '9001:9001'
-    environment:
-      # Use default credentials for simplicity
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      # Enable public buckets
-      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
-      MINIO_SERVER_URL: http://localhost:9000
-    volumes:
-      - ./data/minio:/data
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-
-  # Initialize MinIO
-  minio-init:
-    image: minio/mc
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      # Enable command echoing and error reporting
-      set -x
-
-      echo 'Setting up MinIO alias'
-      mc alias set myminio http://minio:9000 minioadmin minioadmin || echo 'FAILED: alias setup'
-      "
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   graphql-engine:
-    image: hasura/graphql-engine:v2.40.3.cli-migrations-v3
-    volumes:
-      - ./hasura-metadata:/hasura-metadata
+    image: ${BOOTSTRAP_DOCKERHUB_USERNAME}/yatri-energy-hasura:cicd
     ports:
-      - 8090:8080
-    restart: always
+      - 127.0.0.1:18090:8080
     depends_on:
       citrine:
-        # ensures hasura migrations will run only after citrine is healthy,
-        # meaning 01_Data/dist/layers/sequelize/util.js was executed and logged
-        # CitrineOS Logger:DefaultSequelizeInstance Database altered,
-        # which means the database is ready to be used by hasura
         condition: service_healthy
     environment:
-      ## postgres database to store Hasura metadata
-      HASURA_GRAPHQL_DATABASE_URL: postgres://citrine:citrine@ocpp-db:5432/citrine
-      ## enable the console served by server
-      HASURA_GRAPHQL_ENABLE_CONSOLE: 'true' # set to "false" to disable console
-      ## enable debugging mode. It is recommended to disable this in production
-      HASURA_GRAPHQL_DEV_MODE: 'true'
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${BOOTSTRAP_RDS_USERNAME}:${BOOTSTRAP_RDS_PASSWORD}@${BOOTSTRAP_RDS_HOST}:${BOOTSTRAP_RDS_PORT}/${BOOTSTRAP_RDS_DATABASE}?sslmode=require
+      HASURA_GRAPHQL_ADMIN_SECRET: ${BOOTSTRAP_HASURA_ADMIN_SECRET}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
+      HASURA_GRAPHQL_DEV_MODE: ${BOOTSTRAP_HASURA_DEV_MODE}
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
       HASURA_GRAPHQL_ENABLE_TELEMETRY: 'false'
-      ## uncomment next line to run console offline (i.e load console assets from server instead of CDN)
-      # HASURA_GRAPHQL_CONSOLE_ASSETS_DIR: /srv/console-assets
-      ## uncomment next line to set an admin secret - warning, without configuration this will cause upstream services to fail
-      # HASURA_GRAPHQL_ADMIN_SECRET: CitrineOS!
       HASURA_GRAPHQL_METADATA_DEFAULTS: '{"backend_configs":{"dataconnector":{"athena":{"uri":"http://data-connector-agent:8081/api/v1/athena"},"mariadb":{"uri":"http://data-connector-agent:8081/api/v1/mariadb"},"mysql8":{"uri":"http://data-connector-agent:8081/api/v1/mysql"},"oracle":{"uri":"http://data-connector-agent:8081/api/v1/oracle"},"snowflake":{"uri":"http://data-connector-agent:8081/api/v1/snowflake"}}}}'
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://graphql-engine:8080/healthz']
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/healthz']
       interval: 5s
       timeout: 10s
       retries: 20
-      start_period: 5s
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json
+    environment:
+      DOCKER_API_VERSION: 1.44
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_POLL_INTERVAL: 30
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_INCLUDE_RESTARTING: 'true'
+      WATCHTOWER_ROLLING_RESTART: 'true'
+      WATCHTOWER_NOTIFICATIONS: 'shoutrrr'
+      WATCHTOWER_NOTIFICATION_URL: ${BOOTSTRAP_WATCHTOWER_NOTIFICATION_URL}
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:

@@ -49,7 +49,13 @@ import {
   RabbitMqSender,
   RealTimeAuthorizer,
   SignedMeterValuesUtil,
+  YatriEnergyClient,
+  PaymentSqsPublisher,
+  PaymentSettlementPayload,
+  PaymentRabbitMqPublisher,
+  PaymentRoutingKeys,
 } from '@citrineos/util';
+import { v4 as uuidv4 } from 'uuid';
 import { ILogObj, Logger } from 'tslog';
 import { TransactionService } from './TransactionService';
 import { StatusNotificationService } from './StatusNotificationService';
@@ -86,6 +92,8 @@ export class TransactionsModule extends AbstractModule {
 
   private readonly _sendCostUpdatedOnMeterValue: boolean | undefined;
   private readonly _costUpdatedInterval: number | undefined;
+  private _paymentSqsPublisher?: PaymentSqsPublisher;
+  private _paymentRabbitMqPublisher?: PaymentRabbitMqPublisher;
 
   /**
    * This is the constructor function that initializes the {@link TransactionsModule}.
@@ -152,8 +160,10 @@ export class TransactionsModule extends AbstractModule {
    * @param {IAuthorizer} [realTimeAuthorizer] - An optional parameter of type {@link IAuthorizer} which represents
    * a real-time authorizer that can be used to authorize real-time requests.
    */
+  private readonly _bootstrapConfig?: BootstrapConfig;
+
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     fileStorage: IFileStorage,
     sender?: IMessageSender,
@@ -169,6 +179,7 @@ export class TransactionsModule extends AbstractModule {
     ocppMessageRepository?: IOCPPMessageRepository,
     realTimeAuthorizer?: IAuthorizer,
     authorizers?: IAuthorizer[],
+    bootstrapConfig?: BootstrapConfig,
   ) {
     super(
       config,
@@ -179,29 +190,33 @@ export class TransactionsModule extends AbstractModule {
       logger,
     );
 
+    this._bootstrapConfig = bootstrapConfig;
     this._requests = config.modules.transactions.requests;
     this._responses = config.modules.transactions.responses;
 
     this._fileStorage = fileStorage;
 
+    // Note: fallback repo creation requires bootstrapConfig; these paths are only hit
+    // when the module is used standalone without pre-created repositories.
+    const repoConfig = bootstrapConfig!;
     this._transactionEventRepository =
       transactionEventRepository ||
-      new sequelize.SequelizeTransactionEventRepository(config, logger);
+      new sequelize.SequelizeTransactionEventRepository(repoConfig, logger);
     this._authorizeRepository =
-      authorizeRepository || new sequelize.SequelizeAuthorizationRepository(config, logger);
+      authorizeRepository || new sequelize.SequelizeAuthorizationRepository(repoConfig, logger);
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, logger);
+      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(repoConfig, logger);
     this._componentRepository =
       componentRepository ||
-      new SequelizeRepository<Component>(config, Component.MODEL_NAME, logger);
+      new SequelizeRepository<Component>(repoConfig, Component.MODEL_NAME, logger);
     this._locationRepository =
-      locationRepository || new sequelize.SequelizeLocationRepository(config, logger);
+      locationRepository || new sequelize.SequelizeLocationRepository(repoConfig, logger);
     this._tariffRepository =
-      tariffRepository || new sequelize.SequelizeTariffRepository(config, logger);
+      tariffRepository || new sequelize.SequelizeTariffRepository(repoConfig, logger);
     this._reservationRepository =
-      reservationRepository || new sequelize.SequelizeReservationRepository(config, logger);
+      reservationRepository || new sequelize.SequelizeReservationRepository(repoConfig, logger);
     this._ocppMessageRepository =
-      ocppMessageRepository || new SequelizeOCPPMessageRepository(config, this._logger);
+      ocppMessageRepository || new SequelizeOCPPMessageRepository(repoConfig, this._logger);
 
     this._authorizers = authorizers || [];
     this._realTimeAuthorizer =
@@ -221,6 +236,7 @@ export class TransactionsModule extends AbstractModule {
       this._realTimeAuthorizer,
       this._authorizers,
       this._logger,
+      this._bootstrapConfig,
     );
 
     this._statusNotificationService = new StatusNotificationService(
@@ -242,6 +258,47 @@ export class TransactionsModule extends AbstractModule {
       this._costCalculator,
       this._logger,
     );
+
+    // Initialize SQS publisher for async payment processing if configured
+    // COMMENTED OUT: Switching to RabbitMQ for payment processing
+    // if (config.yatriEnergy?.sqsRegion && config.yatriEnergy?.sqsQueueUrl) {
+    //   this._paymentSqsPublisher = new PaymentSqsPublisher(
+    //     config.yatriEnergy.sqsRegion,
+    //     config.yatriEnergy.sqsQueueUrl,
+    //     this._logger,
+    //   );
+    //   this._logger.info('PaymentSqsPublisher initialized for async payment processing');
+    // }
+
+    // Initialize RabbitMQ publisher for async payment processing
+    // Uses SEPARATE midlayer RabbitMQ (not the CitrineOS core RabbitMQ)
+    // Exchange: citrineos (direct exchange)
+    // Routing Key: payment.settlement
+    // Consumer should bind queue 'paymentRequests' to this routing key
+    const midlayerRabbitMqUrl = this._bootstrapConfig?.yatriEnergy?.rabbitmqUrl;
+    const midlayerRabbitMqExchange =
+      this._bootstrapConfig?.yatriEnergy?.rabbitmqExchange || 'citrineos';
+    if (midlayerRabbitMqUrl && this._bootstrapConfig?.yatriEnergy?.enabled) {
+      this._paymentRabbitMqPublisher = new PaymentRabbitMqPublisher(
+        midlayerRabbitMqUrl,
+        midlayerRabbitMqExchange,
+        this._logger,
+      );
+      // Connect asynchronously - don't block startup
+      this._paymentRabbitMqPublisher.connect().catch((err) => {
+        this._logger.error(
+          'Failed to connect PaymentRabbitMqPublisher to midlayer RabbitMQ on startup',
+          err,
+        );
+      });
+      this._logger.info(
+        'PaymentRabbitMqPublisher initialized for async payment processing (midlayer)',
+        {
+          exchange: midlayerRabbitMqExchange,
+          routingKey: PaymentRoutingKeys.SETTLEMENT,
+        },
+      );
+    }
   }
 
   get transactionEventRepository(): ITransactionEventRepository {
@@ -279,6 +336,13 @@ export class TransactionsModule extends AbstractModule {
 
     const transactionEvent = message.payload;
     const transactionId = transactionEvent.transactionInfo.transactionId;
+
+    // Normalize idToken to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (transactionEvent.idToken?.idToken) {
+      transactionEvent.idToken.idToken = transactionEvent.idToken.idToken.toLowerCase();
+    }
+
     let response: OCPP2_0_1.TransactionEventResponse | undefined = undefined;
 
     if (transactionEvent.idToken) {
@@ -590,10 +654,17 @@ export class TransactionsModule extends AbstractModule {
     const stationId = message.context.stationId;
     const request = message.payload;
 
+    // Normalize idTag to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idTag) {
+      request.idTag = request.idTag.toLowerCase();
+    }
+
     // Authorize
     const response = await this._transactionService.authorizeOcpp16IdToken(
       message.context,
       request.idTag,
+      this._config as SystemConfig,
     );
 
     // Send response to charger
@@ -639,6 +710,12 @@ export class TransactionsModule extends AbstractModule {
     const tenantId = message.context.tenantId;
     const stationId = message.context.stationId;
     const request = message.payload;
+
+    // Normalize idTag to lowercase for consistent authorization lookups
+    // Different chargers may send idTokens in different cases (e.g., D6A3FA03 vs d6a3fa03)
+    if (request.idTag) {
+      request.idTag = request.idTag.toLowerCase();
+    }
 
     const authorization: Authorization | undefined = request.idTag
       ? await this._authorizeRepository.readOnlyOneByQuerystring(tenantId, {
@@ -692,7 +769,7 @@ export class TransactionsModule extends AbstractModule {
         stationId,
         transactionId: request.transactionId.toString(),
       },
-      include: [StartTransaction],
+      include: [StartTransaction, Authorization],
     });
 
     if (!transaction) {
@@ -729,5 +806,147 @@ export class TransactionsModule extends AbstractModule {
     transaction.stoppedReason = request.reason;
     transaction.endTime = request.timestamp;
     await transaction.save();
+
+    // Process payment settlement (Yatri Energy Integration)
+    await this._processYatriPaymentSettlement(transaction, message);
+  }
+
+  /**
+   * Process payment settlement after transaction completion using RabbitMQ.
+   *
+   * This method:
+   * 1. Checks if payment is required (integration enabled, valid idToken, non-zero cost)
+   * 2. Generates an idempotency key to prevent duplicate charges
+   * 3. Publishes payment request to RabbitMQ (exchange: citrineos, routing key: payment.settlement)
+   * 4. Updates transaction status to QUEUED or QUEUE_FAILED
+   *
+   * The actual payment processing is handled by Yatri Energy Backend,
+   * which consumes from the paymentRequests queue bound to the exchange.
+   */
+  private async _processYatriPaymentSettlement(
+    transaction: Transaction,
+    message: IMessage<OCPP1_6.StopTransactionRequest>,
+  ): Promise<void> {
+    const config = this._config as SystemConfig;
+
+    // Check if Yatri Energy integration is enabled
+    if (!this._bootstrapConfig?.yatriEnergy?.enabled) {
+      this._logger.debug(
+        'Yatri Energy wallet integration is disabled, skipping payment settlement',
+      );
+      await Transaction.update(
+        { paymentStatus: 'NOT_REQUIRED' },
+        { where: { id: transaction.id } },
+      );
+      return;
+    }
+
+    // Check if RabbitMQ publisher is configured
+    // If wallet integration is enabled but RabbitMQ is not configured, this is a configuration error
+    if (!this._paymentRabbitMqPublisher) {
+      const errorMsg = `PaymentRabbitMqPublisher not configured but wallet integration is enabled. Configure RABBITMQ_URL and RABBITMQ_EXCHANGE environment variables.`;
+      this._logger.error(errorMsg);
+      await Transaction.update(
+        { paymentStatus: 'QUEUE_FAILED', paymentErrorMessage: errorMsg },
+        { where: { id: transaction.id } },
+      );
+      return;
+    }
+
+    // Get idToken from transaction authorization
+    // This should NEVER be missing - transactions require authorization first
+    const idToken = transaction.authorization?.idToken;
+    if (!idToken) {
+      const errorMsg = `CRITICAL: No idToken found for transaction ${transaction.transactionId} (DB ID: ${transaction.id}). This indicates a data integrity issue - transactions should always have an authorization.`;
+      this._logger.error(errorMsg);
+      await Transaction.update(
+        { paymentStatus: 'QUEUE_FAILED', paymentErrorMessage: errorMsg },
+        { where: { id: transaction.id } },
+      );
+      throw new Error(errorMsg);
+    }
+
+    // Calculate final cost using CostCalculator
+    const totalCostAmount = await this._costCalculator.calculateTotalCost(
+      message.context.tenantId,
+      transaction.stationId,
+      transaction.id,
+      transaction.totalKwh,
+    );
+
+    if (!totalCostAmount || totalCostAmount <= 0) {
+      this._logger.debug(
+        `No cost to charge for transaction ${transaction.transactionId}, marking as NOT_REQUIRED`,
+      );
+      await Transaction.update(
+        { paymentStatus: 'NOT_REQUIRED' },
+        { where: { id: transaction.id } },
+      );
+      return;
+    }
+
+    // Generate idempotency key to prevent duplicate charges
+    const paymentIdempotencyKey = uuidv4();
+    if (!transaction.locationId) {
+      throw new Error('Location ID is required for payment settlement');
+    }
+
+    // Prepare RabbitMQ payload
+    const payload: PaymentSettlementPayload = {
+      paymentIdempotencyKey,
+      transactionDatabaseId: transaction.id,
+      transactionId: transaction.transactionId,
+      stationId: transaction.stationId,
+      locationId: transaction.locationId,
+      tenantId: message.context.tenantId,
+      idToken: idToken.toLowerCase(),
+      amount: totalCostAmount,
+      currency: 'NPR',
+      energyKwh: transaction.totalKwh || 0,
+      startTime: transaction.startTime,
+      endTime: transaction.endTime,
+      stoppedReason: transaction.stoppedReason || undefined,
+    };
+
+    // Try to publish to RabbitMQ
+    const result = await this._paymentRabbitMqPublisher.publish(payload);
+
+    if (result.success) {
+      // Successfully queued - update transaction status
+      await Transaction.update(
+        {
+          paymentStatus: 'QUEUED',
+          paymentIdempotencyKey,
+          totalCost: totalCostAmount,
+        },
+        { where: { id: transaction.id } },
+      );
+
+      this._logger.info('Payment request queued to RabbitMQ', {
+        transactionId: transaction.transactionId,
+        transactionDatabaseId: transaction.id,
+        paymentIdempotencyKey,
+        amount: totalCostAmount,
+        routingKey: 'payment.settlement',
+      });
+    } else {
+      // Failed to queue - update transaction status
+      await Transaction.update(
+        {
+          paymentStatus: 'QUEUE_FAILED',
+          paymentIdempotencyKey,
+          totalCost: totalCostAmount,
+          paymentErrorMessage: result.error,
+        },
+        { where: { id: transaction.id } },
+      );
+
+      this._logger.error('Failed to queue payment to RabbitMQ', {
+        transactionId: transaction.transactionId,
+        transactionDatabaseId: transaction.id,
+        error: result.error,
+        amount: totalCostAmount,
+      });
+    }
   }
 }

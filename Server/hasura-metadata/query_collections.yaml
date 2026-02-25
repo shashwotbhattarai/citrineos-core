@@ -1,4 +1,17 @@
 # SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
 #
 # SPDX-License-Identifier: Apache-2.0
-[]
+
+# Test query collection to verify CI/CD metadata deployment
+- name: cicd_test_queries
+  definition:
+    queries:
+      - name: ListAllTenants
+        query: |
+          query ListAllTenants {
+            Tenants {
+              id
+              name
+              createdAt
+            }
+          }

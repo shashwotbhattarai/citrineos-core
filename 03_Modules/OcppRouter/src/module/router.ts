@@ -8,7 +8,6 @@ import {
   AbstractModule,
   Ajv,
   BOOT_STATUS,
-  BootstrapConfig,
   CacheNamespace,
   Call,
   CallAction,
@@ -76,7 +75,7 @@ export class MessageRouterImpl extends AbstractMessageRouter implements IMessage
   /**
    * Constructor for the class.
    *
-   * @param {BootstrapConfig & SystemConfig} config - the system configuration
+   * @param {SystemConfig} config - the system configuration
    * @param {ICache} cache - the cache object
    * @param {IMessageSender} [sender] - the message sender
    * @param {IMessageHandler} [handler] - the message handler
@@ -92,7 +91,7 @@ export class MessageRouterImpl extends AbstractMessageRouter implements IMessage
    * @param {CircuitBreakerOptions} [circuitBreakerOptions] - options to configure the circuit breaker
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender: IMessageSender,
     handler: IMessageHandler,
@@ -112,9 +111,10 @@ export class MessageRouterImpl extends AbstractMessageRouter implements IMessage
     this._webhookDispatcher = dispatcher;
     this._networkHook = networkHook;
     this._locationRepository =
-      locationRepository || new sequelize.SequelizeLocationRepository(config, logger);
+      locationRepository || new sequelize.SequelizeLocationRepository(config as any, logger);
     this.subscriptionRepository =
-      subscriptionRepository || new sequelize.SequelizeSubscriptionRepository(config, this._logger);
+      subscriptionRepository ||
+      new sequelize.SequelizeSubscriptionRepository(config as any, this._logger);
     this._handler.initConnection();
     if (this._config.oidcClient) {
       this._oidcTokenProvider = new OidcTokenProvider(this._config.oidcClient, this._logger);

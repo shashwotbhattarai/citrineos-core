@@ -138,6 +138,14 @@ export class DefaultSequelizeInstance {
       dialect: this.config.database.dialect as Dialect,
       username: this.config.database.username,
       password: this.config.database.password,
+      dialectOptions: this.config.database.ssl
+        ? {
+            ssl: {
+              require: true,
+              rejectUnauthorized: false,
+            },
+          }
+        : undefined,
       models: [
         Authorization,
         Boot,

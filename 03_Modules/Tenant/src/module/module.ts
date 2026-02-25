@@ -4,7 +4,6 @@
 
 import {
   AbstractModule,
-  BootstrapConfig,
   CallAction,
   EventGroup,
   ICache,
@@ -30,7 +29,7 @@ export class TenantModule extends AbstractModule {
   /**
    * This is the constructor function that initializes the {@link TenantModule}.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains configuration settings for the module.
+   * @param {SystemConfig} config - The `config` contains configuration settings for the module.
    *
    * @param {ICache} [cache] - The cache instance which is shared among the modules & Central System to pass information such as blacklisted actions or boot status.
    *
@@ -45,7 +44,7 @@ export class TenantModule extends AbstractModule {
    *
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender?: IMessageSender,
     handler?: IMessageHandler,

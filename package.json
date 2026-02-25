@@ -27,7 +27,12 @@
     "test": "jest --config jest.config.ts",
     "coverage": "jest --config jest.config.ts --coverage",
     "prepare": "husky",
-    "migrate": "npx sequelize-cli db:migrate && echo migration completed successfully"
+    "migrate": "npx sequelize-cli db:migrate && echo migration completed successfully",
+    "ci-check": "bash ./scripts/ci-check.sh",
+    "ci-check:lint": "bash ./scripts/ci-check.sh lint",
+    "ci-check:test": "bash ./scripts/ci-check.sh test",
+    "ci-check:license": "bash ./scripts/ci-check.sh license",
+    "ci-check:integ": "bash ./scripts/ci-check.sh integ"
   },
   "lint-staged": {
     "**/*.{js,ts,jsx,tsx,json,md}": "prettier --write"

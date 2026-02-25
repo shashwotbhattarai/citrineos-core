@@ -13,7 +13,7 @@ module.exports = {
     await queryInterface.addColumn('Tenants', 'countryCode', {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: 'US',
+      defaultValue: 'NEP',
     });
     await queryInterface.addColumn('Tenants', 'url', {
       type: DataTypes.STRING,

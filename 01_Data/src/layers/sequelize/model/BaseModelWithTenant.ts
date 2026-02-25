@@ -11,7 +11,6 @@ import {
   ForeignKey,
   Model,
 } from 'sequelize-typescript';
-import { DEFAULT_TENANT_ID } from '@citrineos/base';
 import type { Tenant } from './Tenant';
 
 export abstract class BaseModelWithTenant<
@@ -32,16 +31,13 @@ export abstract class BaseModelWithTenant<
 
   @BeforeUpdate
   @BeforeCreate
-  static setDefaultTenant(instance: BaseModelWithTenant) {
+  static validateTenantId(instance: BaseModelWithTenant) {
     if (instance.tenantId == null) {
-      instance.tenantId = DEFAULT_TENANT_ID;
-    }
-  }
-
-  constructor(...args: any[]) {
-    super(...args);
-    if (this.tenantId == null) {
-      this.tenantId = DEFAULT_TENANT_ID;
+      throw new Error(
+        `tenantId is required and must be explicitly provided. ` +
+          `Model: ${instance.constructor.name}. ` +
+          `Operation rejected to prevent data being assigned to wrong tenant.`,
+      );
     }
   }
 }

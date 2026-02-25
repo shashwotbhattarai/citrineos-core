@@ -58,8 +58,8 @@ const registerSwaggerUi = (systemConfig: SystemConfig, server: FastifyInstance) 
   const swaggerUiOptions: any = {
     routePrefix: systemConfig.util.swagger?.path,
     securityDefinitions: {
-      authorization: {
-        name: 'authorization',
+      ApiKeyAuth: {
+        name: 'X-API-Key',
         type: 'apiKey',
         in: 'header',
       },
@@ -69,7 +69,7 @@ const registerSwaggerUi = (systemConfig: SystemConfig, server: FastifyInstance) 
       filter: true,
     },
     theme: {
-      title: 'CitrineOS Central System API',
+      title: 'Yatri Energy CitrineOS Central System API',
       css: [
         {
           filename: '',
@@ -155,12 +155,14 @@ const registerFastifySwagger = (systemConfig: SystemConfig, server: FastifyInsta
       },
       components: {
         securitySchemes: {
-          authorization: {
-            type: 'http',
-            scheme: 'bearer',
+          ApiKeyAuth: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
           },
         },
       },
+      security: [{ ApiKeyAuth: [] }],
     },
     transformObject: OcppTransformObject,
     refResolver: {

@@ -5,7 +5,6 @@
 import {
   AbstractModule,
   AsHandler,
-  BootstrapConfig,
   CallAction,
   EventGroup,
   HandlerProperties,
@@ -64,7 +63,7 @@ export class ReportingModule extends AbstractModule {
   /**
    * This is the constructor function that initializes the {@link ReportingModule}.
    *
-   * @param {BootstrapConfig & SystemConfig} config - The `config` contains configuration settings for the module.
+   * @param {SystemConfig} config - The `config` contains configuration settings for the module.
    *
    * @param {ICache} [cache] - The cache instance which is shared among the modules & Central System to pass information such as blacklisted actions or boot status.
    *
@@ -85,7 +84,7 @@ export class ReportingModule extends AbstractModule {
    * @param {IVariableMonitoringRepository} [variableMonitoringRepository] - An optional parameter of type {@link IVariableMonitoringRepository} which represents a repository for accessing and manipulating monitoring data.
    */
   constructor(
-    config: BootstrapConfig & SystemConfig,
+    config: SystemConfig,
     cache: ICache,
     sender?: IMessageSender,
     handler?: IMessageHandler,
@@ -107,13 +106,14 @@ export class ReportingModule extends AbstractModule {
     this._responses = config.modules.reporting.responses;
 
     this._deviceModelRepository =
-      deviceModelRepository || new sequelize.SequelizeDeviceModelRepository(config, this._logger);
+      deviceModelRepository ||
+      new sequelize.SequelizeDeviceModelRepository(config as any, this._logger);
     this._securityEventRepository =
       securityEventRepository ||
-      new sequelize.SequelizeSecurityEventRepository(config, this._logger);
+      new sequelize.SequelizeSecurityEventRepository(config as any, this._logger);
     this._variableMonitoringRepository =
       variableMonitoringRepository ||
-      new sequelize.SequelizeVariableMonitoringRepository(config, this._logger);
+      new sequelize.SequelizeVariableMonitoringRepository(config as any, this._logger);
     this._deviceModelService = new DeviceModelService(this._deviceModelRepository);
   }
 
