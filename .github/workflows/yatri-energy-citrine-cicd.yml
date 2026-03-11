@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - cicd
+      - dev
   workflow_dispatch:
 
 env:
@@ -50,7 +51,7 @@ jobs:
           file: ./Server/deploy.Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ env.CITRINE_IMAGE }}:cicd
+          tags: ${{ env.CITRINE_IMAGE }}:${{ github.ref_name }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -61,7 +62,7 @@ jobs:
           file: ./Server/hasura.Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ env.HASURA_IMAGE }}:cicd
+          tags: ${{ env.HASURA_IMAGE }}:${{ github.ref_name }}
 
       # Move cache to avoid ever-growing cache
       - name: Move cache
@@ -73,7 +74,8 @@ jobs:
         run: |
           echo "## Docker Images Pushed Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**CitrineOS Image:** \`${{ env.CITRINE_IMAGE }}:cicd\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Hasura Image:** \`${{ env.HASURA_IMAGE }}:cicd\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**CitrineOS Image:** \`${{ env.CITRINE_IMAGE }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Hasura Image:** \`${{ env.HASURA_IMAGE }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Watchtower will automatically pull and deploy these images on EC2." >> $GITHUB_STEP_SUMMARY
