@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Yatri Motorcycles
+
+# SPDX-License-Identifier: Apache-2.0
+
 #!/usr/bin/env bash
 # Copies nginx.conf to the active nginx site config and restarts nginx.
 # Run on EC2 host (Ubuntu) as root or with sudo.
