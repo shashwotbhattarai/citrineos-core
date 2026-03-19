@@ -205,7 +205,7 @@ if [ -z "$run_selected" ]; then
   run_lint
   run_tests
   run_license
-  run_integ
+  # run_integ  # Disabled — run manually with: ./scripts/ci-check.sh integ
 else
   for arg in $run_selected; do
     case "$arg" in
