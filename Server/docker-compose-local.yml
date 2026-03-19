@@ -113,6 +113,10 @@ services:
       YATRI_ENERGY_BASE_URL: 'https://api.dev.yatri-energy.yatrimotorcycle.com'
       YATRI_ENERGY_API_KEY: ''
       YATRI_WALLET_INTEGRATION_ENABLED: 'true'
+      # === OPENTELEMETRY (Grafana) ===
+      # Set to your OTel collector endpoint to enable telemetry
+      # OTEL_ENDPOINT: 'http://host.docker.internal:4318'
+      # OTEL_SERVICE_NAME: 'citrineos-core-local'
     depends_on:
       ocpp-db:
         condition: service_healthy
