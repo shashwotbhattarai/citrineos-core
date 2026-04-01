@@ -5,6 +5,8 @@
 // OpenTelemetry SDK bootstrap — loaded via `node -r` BEFORE application code.
 // This ensures auto-instrumentation hooks http/net before Fastify imports them.
 
+/* eslint-disable */
+
 const otelEndpoint = process.env.OTEL_ENDPOINT;
 const otelServiceName = process.env.OTEL_SERVICE_NAME;
 

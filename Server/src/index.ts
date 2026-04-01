@@ -588,6 +588,7 @@ export class CitrineOSServer {
     // Attach OpenTelemetry log transport if telemetry is enabled
     if (process.env.OTEL_ENDPOINT) {
       try {
+        // eslint-disable-next-line
         const { createTslogOtelTransport } = require('./telemetry');
         logger.attachTransport(createTslogOtelTransport());
         console.log('[OTel] tslog transport attached — logs will be exported to OTel collector');
