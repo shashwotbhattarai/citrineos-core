@@ -197,7 +197,13 @@ export class DefaultSequelizeInstance {
         Tenant,
         TenantPartner,
       ],
-      pool: this.config.database.pool,
+      pool: {
+        max: this.config.database.pool?.max ?? 10,
+        min: this.config.database.pool?.min ?? 2,
+        acquire: this.config.database.pool?.acquire ?? 30000,
+        idle: this.config.database.pool?.idle ?? 10000,
+        evict: this.config.database.pool?.evict ?? 15000,
+      },
       logging: (_sql: string, _timing?: number) => {},
     });
   }
