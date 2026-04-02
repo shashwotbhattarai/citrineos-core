@@ -74,6 +74,25 @@ export class TransactionService {
     return totalKwh;
   }
 
+  async extractTransactionSoc(
+    tenantId: number,
+    transactionDbId: number,
+  ): Promise<{ startSoc: number | null; endSoc: number | null }> {
+    const meterValues =
+      await this._transactionEventRepository.readAllMeterValuesByTransactionDataBaseId(
+        tenantId,
+        transactionDbId,
+      );
+    const meterValueTypes = meterValues.map((meterValue) =>
+      OCPP2_0_1_Mapper.MeterValueMapper.toMeterValueType(meterValue),
+    );
+    const soc = MeterValueUtils.extractSoc(meterValueTypes);
+    this._logger.debug(
+      `Extracted SoC for transaction ${transactionDbId}: start=${soc.startSoc}, end=${soc.endSoc}`,
+    );
+    return soc;
+  }
+
   async authorizeOcpp201IdToken(
     tenantId: number,
     transactionEvent: OCPP2_0_1.TransactionEventRequest,

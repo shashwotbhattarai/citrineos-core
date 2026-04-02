@@ -11,6 +11,39 @@ export class MeterValueUtils {
   ]);
 
   /**
+   * Extract start and end State of Charge (SoC) from meter values.
+   * Finds all SoC measurands, sorts by timestamp, returns earliest as startSoc and latest as endSoc.
+   *
+   * @param {array} meterValues - meterValues of a transaction.
+   * @return {{ startSoc: number | null, endSoc: number | null }} SoC percentages.
+   */
+  public static extractSoc(meterValues: OCPP2_0_1.MeterValueType[]): {
+    startSoc: number | null;
+    endSoc: number | null;
+  } {
+    const socReadings: { timestamp: number; value: number }[] = [];
+
+    for (const mv of meterValues) {
+      const ts = Date.parse(mv.timestamp);
+      for (const sv of mv.sampledValue) {
+        if (sv.measurand === OCPP2_0_1.MeasurandEnumType.SoC) {
+          socReadings.push({ timestamp: ts, value: sv.value });
+        }
+      }
+    }
+
+    if (socReadings.length === 0) {
+      return { startSoc: null, endSoc: null };
+    }
+
+    socReadings.sort((a, b) => a.timestamp - b.timestamp);
+    return {
+      startSoc: socReadings[0].value,
+      endSoc: socReadings[socReadings.length - 1].value,
+    };
+  }
+
+  /**
    * Calculate the total Kwh
    *
    * @param {array} meterValues - meterValues of a transaction.

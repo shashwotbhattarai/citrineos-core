@@ -109,6 +109,12 @@ export class Transaction extends BaseModelWithTenant implements ITransactionDto 
   @Column(DataType.DECIMAL)
   declare totalKwh?: number | null;
 
+  @Column(DataType.DECIMAL)
+  declare startSoc?: number | null;
+
+  @Column(DataType.DECIMAL)
+  declare endSoc?: number | null;
+
   @Column(DataType.STRING)
   declare stoppedReason?: string | null;
 

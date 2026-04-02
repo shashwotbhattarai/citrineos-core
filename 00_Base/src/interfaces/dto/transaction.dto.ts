@@ -42,6 +42,8 @@ export interface ITransactionDto extends IBaseDto {
   authorization?: IAuthorizationDto;
   tariffId?: number | null;
   tariff?: ITariffDto | null;
+  startSoc?: number | null;
+  endSoc?: number | null;
   startTime?: string | null;
   endTime?: string | null;
   customData?: any | null;
@@ -82,6 +84,8 @@ export enum TransactionDtoProps {
   authorizationId = 'authorizationId',
   authorization = 'authorization',
   tariffId = 'tariffId',
+  startSoc = 'startSoc',
+  endSoc = 'endSoc',
   startTime = 'startTime',
   endTime = 'endTime',
   customData = 'customData',
