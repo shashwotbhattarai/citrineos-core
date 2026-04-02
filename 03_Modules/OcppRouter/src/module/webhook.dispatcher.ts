@@ -11,15 +11,17 @@ import {
   MessageTypeId,
   OCPPVersionType,
 } from '@citrineos/base';
-import { ISubscriptionRepository, OCPPMessage, Subscription } from '@citrineos/data';
+import { ISubscriptionRepository, Subscription } from '@citrineos/data';
 import { ILogObj, Logger } from 'tslog';
 import { v4 as uuidv4 } from 'uuid';
+import { OCPPMessageBatcher } from './ocpp-message-batcher';
 
 export class WebhookDispatcher {
   private static readonly SUBSCRIPTION_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
 
   private _logger: Logger<ILogObj>;
   private _subscriptionRepository: ISubscriptionRepository;
+  private _messageBatcher: OCPPMessageBatcher;
 
   private _identifiers: Set<string> = new Set();
 
@@ -34,6 +36,8 @@ export class WebhookDispatcher {
     this._logger = logger
       ? logger.getSubLogger({ name: this.constructor.name })
       : new Logger<ILogObj>({ name: this.constructor.name });
+
+    this._messageBatcher = new OCPPMessageBatcher(50, 5000, this._logger);
 
     setInterval(async () => {
       await this._refreshSubscriptions();
@@ -78,7 +82,6 @@ export class WebhookDispatcher {
   ) {
     const identifier = createIdentifier(tenantId, stationId);
     try {
-      // UUID generated so that unparsed messages don't end up referencing each other
       const messageId = uuidv4();
       const callAction = 'unparsed';
 
@@ -91,20 +94,22 @@ export class WebhookDispatcher {
         ['action', callAction],
       ]);
 
-      const messagePromise = OCPPMessage.create({
-        tenantId: tenantId,
-        stationId: stationId,
-        correlationId: messageId,
-        origin: origin,
-        protocol: protocol,
-        action: null,
-        message: message,
-        timestamp: timestamp,
-      });
+      // Fire webhook callbacks first (sub-second delivery to midlayer)
       const promises: Promise<any>[] =
         this._onMessageCallbacks.get(identifier)?.map((callback) => callback(message, info)) ?? [];
-      promises.push(messagePromise);
       await Promise.all(promises);
+
+      // Buffer DB write (non-blocking, batched)
+      this._messageBatcher.enqueue({
+        tenantId,
+        stationId,
+        correlationId: messageId,
+        origin,
+        protocol: protocol as any,
+        action: null,
+        message,
+        timestamp,
+      });
     } catch (error) {
       this._logger.error(`Failed to dispatch message received for ${identifier}`, error);
     }
@@ -120,7 +125,6 @@ export class WebhookDispatcher {
     const tenantId = getTenantIdFromIdentifier(identifier);
     const stationId = getStationIdFromIdentifier(identifier);
     if (!rpcMessage) {
-      // If rpcMessage is not provided, fallback to unparsed message handling
       return this._dispatchMessageReceivedUnparsed(
         tenantId,
         stationId,
@@ -129,16 +133,13 @@ export class WebhookDispatcher {
         protocol,
       );
     }
-    const transaction = await OCPPMessage.sequelize!.transaction();
+
     try {
       const messageTypeId = rpcMessage[0];
       const messageId = rpcMessage[1];
       const origin = MessageOrigin.ChargingStation;
 
-      const relatedMessage = await OCPPMessage.findOne({
-        where: { tenantId: tenantId, stationId: stationId, correlationId: messageId },
-        transaction,
-      });
+      // Resolve action using in-memory correlation (replaces DB findOne)
       let callAction = undefined;
       switch (messageTypeId) {
         case MessageTypeId.Call:
@@ -147,35 +148,19 @@ export class WebhookDispatcher {
           } catch (error) {
             this._logger.warn(`Failed to map call action ${callAction} for ${messageId}`, error);
           }
-          if (relatedMessage && !relatedMessage.action) {
-            // Update the related message with the correct action if it was missing
-            await relatedMessage.update({ action: callAction }, { transaction });
-          }
+          // Store correlation for when the response comes back
+          this._messageBatcher.setCorrelation(tenantId, stationId, messageId, callAction);
           break;
         case MessageTypeId.CallResult:
         case MessageTypeId.CallError: {
-          callAction = relatedMessage?.action;
+          callAction = this._messageBatcher.getCorrelatedAction(tenantId, stationId, messageId);
           break;
         }
         default:
         // undefined
       }
 
-      await OCPPMessage.create(
-        {
-          tenantId: tenantId,
-          stationId: stationId,
-          correlationId: messageId,
-          origin: origin,
-          protocol: protocol,
-          action: callAction,
-          message: rpcMessage,
-          timestamp: timestamp,
-        },
-        { transaction },
-      );
-      await transaction.commit();
-
+      // Fire webhook callbacks FIRST (sub-second delivery to midlayer)
       try {
         const info = new Map<string, string>([
           ['correlationId', messageId],
@@ -199,9 +184,20 @@ export class WebhookDispatcher {
       } catch (err) {
         this._logger.error(`Failed to dispatch message received for ${identifier} : ${err}`);
       }
+
+      // Buffer DB write (non-blocking, batched)
+      this._messageBatcher.enqueue({
+        tenantId,
+        stationId,
+        correlationId: messageId,
+        origin,
+        protocol: protocol as any,
+        action: callAction,
+        message: rpcMessage,
+        timestamp,
+      });
     } catch (err) {
-      this._logger.error(`Failed to save message received for ${identifier}`, err);
-      await transaction.rollback();
+      this._logger.error(`Failed to process message received for ${identifier}`, err);
     }
   }
 
@@ -214,16 +210,13 @@ export class WebhookDispatcher {
   ) {
     const tenantId = getTenantIdFromIdentifier(identifier);
     const stationId = getStationIdFromIdentifier(identifier);
-    const transaction = await OCPPMessage.sequelize!.transaction();
+
     try {
       const messageTypeId = rpcMessage[0];
       const messageId = rpcMessage[1];
       const origin = MessageOrigin.ChargingStationManagementSystem;
 
-      const relatedMessage = await OCPPMessage.findOne({
-        where: { tenantId: tenantId, stationId: stationId, correlationId: messageId },
-        transaction,
-      });
+      // Resolve action using in-memory correlation (replaces DB findOne)
       let callAction = undefined;
       switch (messageTypeId) {
         case MessageTypeId.Call:
@@ -232,35 +225,19 @@ export class WebhookDispatcher {
           } catch (error) {
             this._logger.warn(`Failed to map call action ${callAction} for ${messageId}`, error);
           }
-          if (relatedMessage && !relatedMessage.action) {
-            // Update the related message with the correct action if it was missing
-            await relatedMessage.update({ action: callAction }, { transaction });
-          }
+          // Store correlation for when the response comes back
+          this._messageBatcher.setCorrelation(tenantId, stationId, messageId, callAction);
           break;
         case MessageTypeId.CallResult:
         case MessageTypeId.CallError: {
-          callAction = relatedMessage?.action;
+          callAction = this._messageBatcher.getCorrelatedAction(tenantId, stationId, messageId);
           break;
         }
         default:
         // undefined
       }
 
-      await OCPPMessage.create(
-        {
-          tenantId: tenantId,
-          stationId: stationId,
-          correlationId: messageId,
-          origin: origin,
-          protocol: protocol,
-          action: callAction,
-          message: rpcMessage,
-          timestamp: timestamp,
-        },
-        { transaction },
-      );
-      await transaction.commit();
-
+      // Fire webhook callbacks FIRST (sub-second delivery to midlayer)
       try {
         const info = new Map<string, string>([
           ['correlationId', messageId],
@@ -283,9 +260,20 @@ export class WebhookDispatcher {
       } catch (err) {
         this._logger.error(`Failed to dispatch message sent for ${identifier} : ${err}`);
       }
+
+      // Buffer DB write (non-blocking, batched)
+      this._messageBatcher.enqueue({
+        tenantId,
+        stationId,
+        correlationId: messageId,
+        origin,
+        protocol: protocol as any,
+        action: callAction,
+        message: rpcMessage,
+        timestamp,
+      });
     } catch (err) {
-      this._logger.error(`Failed to save message sent for ${identifier}`, err);
-      await transaction.rollback();
+      this._logger.error(`Failed to process message sent for ${identifier}`, err);
     }
   }
 

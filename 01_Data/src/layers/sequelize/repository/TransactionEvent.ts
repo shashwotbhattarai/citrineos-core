@@ -348,17 +348,24 @@ export class SequelizeTransactionEventRepository
         { totalKwh: MeterValueUtils.getTotalKwh(meterValueTypes) },
         { transaction: sequelizeTransaction },
       );
+      // Selective reload: only refresh transaction-level fields, not all events/meter values.
+      // Loading ALL TransactionEvents + ALL MeterValues causes memory explosion on long sessions.
       await finalTransaction.reload({
-        include: [
-          {
-            model: TransactionEvent,
-            as: Transaction.TRANSACTION_EVENTS_ALIAS,
-            include: [EvseType],
-          },
-          MeterValue,
+        attributes: [
+          'id',
+          'transactionId',
+          'stationId',
+          'isActive',
+          'totalKwh',
+          'chargingState',
+          'startTime',
+          'totalCost',
+          'updatedAt',
         ],
         transaction: sequelizeTransaction,
       });
+      // Attach the current event for downstream consumers
+      finalTransaction.transactionEvents = [event];
 
       this.transaction.emit(created ? 'created' : 'updated', [finalTransaction]);
 
@@ -488,9 +495,7 @@ export class SequelizeTransactionEventRepository
       queryOptions.offset = offset;
     }
 
-    if (limit) {
-      queryOptions.limit = limit;
-    }
+    queryOptions.limit = limit || 100;
 
     return this.transaction.readAllByQuery(tenantId, queryOptions);
   }
@@ -550,22 +555,11 @@ export class SequelizeTransactionEventRepository
           stationId,
           isActive: true,
         },
-        include: [
-          {
-            model: TransactionEvent,
-            as: Transaction.TRANSACTION_EVENTS_ALIAS,
-            include: [EvseType],
-          },
-          MeterValue,
-          { model: Evse, where: { evseTypeId: evseId }, required: true },
-        ],
+        include: [{ model: Evse, where: { evseTypeId: evseId }, required: true }],
+        order: [['updatedAt', 'DESC']],
+        limit: 1,
       })
-      .then((transactions) => {
-        if (transactions.length > 1) {
-          transactions.sort((t1, t2) => t2.updatedAt.getTime() - t1.updatedAt.getTime());
-        }
-        return transactions[0];
-      });
+      .then((transactions) => transactions[0]);
   }
 
   async createMeterValue(
