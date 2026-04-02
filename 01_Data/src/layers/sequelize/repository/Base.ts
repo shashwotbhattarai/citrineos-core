@@ -64,7 +64,7 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
   async readAllBySqlString(
     tenantId: number,
     sqlString: string,
-    namespace: string = this.namespace,
+    _namespace: string = this.namespace,
   ): Promise<object[]> {
     return await this.s.query(`${sqlString}`, { type: QueryTypes.SELECT });
   }
@@ -126,7 +126,7 @@ export class SequelizeRepository<T extends Model<any, any>> extends CrudReposito
   protected async _create(
     tenantId: number,
     value: T,
-    namespace: string = this.namespace,
+    _namespace: string = this.namespace,
   ): Promise<T> {
     return await value.save();
   }

@@ -49,7 +49,6 @@ import {
   RabbitMqSender,
   RealTimeAuthorizer,
   SignedMeterValuesUtil,
-  YatriEnergyClient,
   PaymentSqsPublisher,
   PaymentSettlementPayload,
   PaymentRabbitMqPublisher,
@@ -835,7 +834,7 @@ export class TransactionsModule extends AbstractModule {
     transaction: Transaction,
     message: IMessage<OCPP1_6.StopTransactionRequest>,
   ): Promise<void> {
-    const config = this._config as SystemConfig;
+    const _config = this._config as SystemConfig;
 
     // Check if Yatri Energy integration is enabled
     if (!this._bootstrapConfig?.yatriEnergy?.enabled) {

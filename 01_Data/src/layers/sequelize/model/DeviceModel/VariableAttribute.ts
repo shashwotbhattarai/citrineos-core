@@ -22,7 +22,7 @@ import { Variable } from './Variable';
 import { Component } from './Component';
 import { Boot } from '../Boot';
 import { VariableStatus } from './VariableStatus';
-import { ChargingStation, Evse } from '../Location';
+import { ChargingStation } from '../Location';
 import { CryptoUtils } from '../../../../util/CryptoUtils';
 import { BaseModelWithTenant } from '../BaseModelWithTenant';
 import { EvseType } from './EvseType';

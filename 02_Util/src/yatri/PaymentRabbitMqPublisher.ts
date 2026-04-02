@@ -160,7 +160,7 @@ export class PaymentRabbitMqPublisher {
       // Try to reconnect
       try {
         await this.connect();
-      } catch (error) {
+      } catch (_error) {
         return {
           success: false,
           error: 'Not connected to RabbitMQ and reconnection failed',
