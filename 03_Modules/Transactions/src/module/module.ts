@@ -802,6 +802,14 @@ export class TransactionsModule extends AbstractModule {
         Cannot calculate totalKwh.`,
       );
     }
+    // Extract start/end SoC from all meter values collected during the transaction
+    const { startSoc, endSoc } = await this._transactionService.extractTransactionSoc(
+      tenantId,
+      transaction.id,
+    );
+    transaction.startSoc = startSoc;
+    transaction.endSoc = endSoc;
+
     transaction.isActive = false;
     transaction.stoppedReason = request.reason;
     transaction.endTime = request.timestamp;
