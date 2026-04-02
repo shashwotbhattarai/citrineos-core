@@ -406,7 +406,7 @@ export class CitrineOSServer {
           try {
             await sequelize.DefaultSequelizeInstance.getInstance(bootstrapConfig).authenticate();
             healthStatus.database = 'connected';
-          } catch (error) {
+          } catch (_error) {
             healthStatus.database = 'disconnected';
             errors.push('Database connection failed');
           }
@@ -421,7 +421,7 @@ export class CitrineOSServer {
             } else {
               healthStatus.rabbitmq = 'not_configured';
             }
-          } catch (error) {
+          } catch (_error) {
             healthStatus.rabbitmq = 'disconnected';
             errors.push('RabbitMQ connection failed');
           }
@@ -459,7 +459,7 @@ export class CitrineOSServer {
             } else {
               healthStatus.s3 = 'not_configured';
             }
-          } catch (error) {
+          } catch (_error) {
             healthStatus.s3 = 'disconnected';
             errors.push('S3 connection failed');
           }
@@ -484,7 +484,7 @@ export class CitrineOSServer {
             } else {
               healthStatus.hasura = 'not_configured';
             }
-          } catch (error) {
+          } catch (_error) {
             healthStatus.hasura = 'disconnected';
             // Non-critical: don't add to errors (Hasura starts after citrine)
           }
@@ -506,7 +506,7 @@ export class CitrineOSServer {
               // Wallet integration is disabled, payment queue not needed
               healthStatus.paymentQueue = 'not_configured';
             }
-          } catch (error) {
+          } catch (_error) {
             healthStatus.paymentQueue = 'disconnected';
             errors.push('Midlayer RabbitMQ connection failed');
           }
@@ -536,7 +536,7 @@ export class CitrineOSServer {
               // Wallet integration is disabled, midlayer API check not needed
               healthStatus.midlayerApi = 'not_configured';
             }
-          } catch (error) {
+          } catch (_error) {
             healthStatus.midlayerApi = 'disconnected';
             errors.push('Midlayer API health check failed');
           }

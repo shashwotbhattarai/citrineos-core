@@ -97,7 +97,7 @@ export = {
       await queryInterface.addIndex(TABLE_NAME, ['paymentStatus'], {
         name: 'idx_transactions_payment_status',
       });
-    } catch (error) {
+    } catch (_error) {
       // Index might already exist
     }
   },
@@ -108,7 +108,7 @@ export = {
     // Remove index
     try {
       await queryInterface.removeIndex(TABLE_NAME, 'idx_transactions_payment_status');
-    } catch (error) {
+    } catch (_error) {
       // Index might not exist
     }
 

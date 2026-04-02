@@ -21,7 +21,6 @@ import {
 } from '@citrineos/base';
 import { Op } from 'sequelize';
 import {
-  Boot,
   ICertificateRepository,
   IDeviceModelRepository,
   IInstalledCertificateRepository,
