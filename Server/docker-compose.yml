@@ -99,6 +99,9 @@ services:
       # Midlayer RabbitMQ (for async payment queue)
       YATRI_ENERGY_RABBITMQ_URL: ${BOOTSTRAP_YATRI_ENERGY_RABBITMQ_URL}
       YATRI_ENERGY_RABBITMQ_EXCHANGE: ${BOOTSTRAP_YATRI_ENERGY_RABBITMQ_EXCHANGE}
+      # === OPENTELEMETRY (Grafana) ===
+      OTEL_ENDPOINT: ${BOOTSTRAP_OTEL_ENDPOINT}
+      OTEL_SERVICE_NAME: ${BOOTSTRAP_OTEL_SERVICE_NAME}
     depends_on:
       amqp-broker:
         condition: service_healthy

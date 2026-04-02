@@ -583,7 +583,21 @@ export class CitrineOSServer {
       type: isCloud ? ('json' as const) : ('pretty' as const),
     };
 
-    return new Logger<ILogObj>(loggerSettings);
+    const logger = new Logger<ILogObj>(loggerSettings);
+
+    // Attach OpenTelemetry log transport if telemetry is enabled
+    if (process.env.OTEL_ENDPOINT) {
+      try {
+        // eslint-disable-next-line
+        const { createTslogOtelTransport } = require('./telemetry');
+        logger.attachTransport(createTslogOtelTransport());
+        console.log('[OTel] tslog transport attached — logs will be exported to OTel collector');
+      } catch (err) {
+        console.error('[OTel] Failed to attach tslog transport:', err);
+      }
+    }
+
+    return logger;
   }
 
   private async initDb() {
