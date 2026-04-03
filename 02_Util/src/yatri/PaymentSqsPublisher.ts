@@ -20,6 +20,7 @@ export interface PaymentSettlementPayload {
   /** Tenant ID for multi-tenant isolation */
 
   locationId: number;
+  locationName?: string;
 
   tenantId: number;
   /** User's RFID token (lowercase) */
@@ -35,6 +36,9 @@ export interface PaymentSettlementPayload {
   /** Transaction end time (ISO 8601) */
   endTime?: string;
   /** Reason for stopping the transaction */
+
+  startSoc?: number;
+  endSoc?: number;
   stoppedReason?: string;
 }
 
