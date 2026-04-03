@@ -36,6 +36,7 @@ import {
   IReservationRepository,
   ITariffRepository,
   ITransactionEventRepository,
+  Location,
   MeterValue,
   sequelize,
   SequelizeOCPPMessageRepository,
@@ -768,7 +769,7 @@ export class TransactionsModule extends AbstractModule {
         stationId,
         transactionId: request.transactionId.toString(),
       },
-      include: [StartTransaction, Authorization],
+      include: [StartTransaction, Authorization, Location],
     });
 
     if (!transaction) {
@@ -905,6 +906,7 @@ export class TransactionsModule extends AbstractModule {
       transactionId: transaction.transactionId,
       stationId: transaction.stationId,
       locationId: transaction.locationId,
+      locationName: transaction.location?.name,
       tenantId: message.context.tenantId,
       idToken: idToken.toLowerCase(),
       amount: totalCostAmount,
@@ -913,6 +915,8 @@ export class TransactionsModule extends AbstractModule {
       startTime: transaction.startTime,
       endTime: transaction.endTime,
       stoppedReason: transaction.stoppedReason || undefined,
+      startSoc: transaction.startSoc ?? undefined,
+      endSoc: transaction.endSoc ?? undefined,
     };
 
     // Try to publish to RabbitMQ
