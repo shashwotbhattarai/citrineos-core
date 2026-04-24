@@ -35,8 +35,8 @@ services:
   amqp-broker:
     image: rabbitmq:3-management
     ports:
-      - 127.0.0.1:25672:15672
-      - 127.0.0.1:5672:5672
+      - 15672:15672
+      - 5672:5672
     environment:
       RABBITMQ_DEFAULT_USER: ${BOOTSTRAP_RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${BOOTSTRAP_RABBITMQ_PASS}
@@ -107,15 +107,15 @@ services:
       amqp-broker:
         condition: service_healthy
     ports:
-      - 127.0.0.1:8080:8080
-      - 127.0.0.1:8081:8081
-      - 127.0.0.1:8082:8082
-      - 127.0.0.1:8443:8443
-      - 127.0.0.1:8444:8444
-      - 127.0.0.1:18092:8092
-      - 127.0.0.1:18093:8093
-      - 127.0.0.1:18094:8094
-      - 127.0.0.1:8095:8095
+      - 8080:8080
+      - 8081:8081
+      - 8082:8082
+      - 8443:8443
+      - 8444:8444
+      - 8092:8092
+      - 8093:8093
+      - 8094:8094
+      - 8095:8095
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
       interval: 30s
@@ -129,7 +129,7 @@ services:
   graphql-engine:
     image: ${BOOTSTRAP_DOCKERHUB_USERNAME}/yatri-energy-hasura:cicd
     ports:
-      - 127.0.0.1:18090:8080
+      - 8090:8080
     depends_on:
       citrine:
         condition: service_healthy
@@ -183,7 +183,7 @@ services:
       graphql-engine:
         condition: service_healthy
     ports:
-      - 127.0.0.1:8085:8085
+      - 8085:8085
     restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
