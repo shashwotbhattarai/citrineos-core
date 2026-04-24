@@ -12,7 +12,7 @@
 # Prerequisites:
 #   - AWS RDS PostgreSQL instance with PostGIS extension
 #   - AWS S3 bucket for config storage
-#   - Docker Hub account with access to private yatri-energy-citrine image
+#   - Docker Hub account with access to private yatri-energy-citrine and yatri-energy-ocpi images
 #
 # Watchtower will automatically pull and deploy new images tagged :cicd
 #
@@ -20,7 +20,8 @@
 #   1. amqp-broker (RabbitMQ)
 #   2. citrine (runs DB migrations, creates tables)
 #   3. graphql-engine (applies Hasura metadata to existing tables)
-#   4. watchtower (monitors for updates)
+#   4. citrineos-ocpi (OCPI 2.2.1 roaming layer - needs core + Hasura ready)
+#   5. watchtower (monitors for updates)
 #
 # If metadata fails, it means citrine hasn't created the tables yet.
 # Hasura MUST start AFTER citrine is healthy.
@@ -146,6 +147,43 @@ services:
       timeout: 10s
       retries: 20
       start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  citrineos-ocpi:
+    image: ${BOOTSTRAP_DOCKERHUB_USERNAME}/yatri-energy-ocpi:cicd
+    environment:
+      APP_NAME: 'all'
+      APP_ENV: 'docker'
+      # === DATABASE (same AWS RDS as core) ===
+      DB_HOST: ${BOOTSTRAP_RDS_HOST}
+      DB_PORT: ${BOOTSTRAP_RDS_PORT}
+      DB_NAME: ${BOOTSTRAP_RDS_DATABASE}
+      DB_USER: ${BOOTSTRAP_RDS_USERNAME}
+      DB_PASS: ${BOOTSTRAP_RDS_PASSWORD}
+      DB_SSL: ${BOOTSTRAP_RDS_SSL}
+      # === HASURA GRAPHQL (container network) ===
+      GRAPHQL_ENDPOINT: 'http://graphql-engine:8080/v1/graphql'
+      # === RABBITMQ (same broker as core) ===
+      AMQP_URL: amqp://${BOOTSTRAP_RABBITMQ_USER}:${BOOTSTRAP_RABBITMQ_PASS}@amqp-broker:5672
+      AMQP_EXCHANGE: ${BOOTSTRAP_AMQP_EXCHANGE}
+      # === OCPP COMMAND ROUTING (core API on container network) ===
+      COMMANDS_OCPP1_6_REMOTE_START_TRANSACTION_REQUEST_URL: 'http://citrine:8080/ocpp/1.6/evdriver/remoteStartTransaction'
+      COMMANDS_OCPP1_6_REMOTE_STOP_TRANSACTION_REQUEST_URL: 'http://citrine:8080/ocpp/1.6/evdriver/remoteStopTransaction'
+      COMMANDS_OCPP1_6_UNLOCK_CONNECTOR_REQUEST_URL: 'http://citrine:8080/ocpp/1.6/evdriver/unlockConnector'
+      COMMANDS_OCPP2_0_1_REQUEST_START_TRANSACTION_REQUEST_URL: 'http://citrine:8080/ocpp/2.0.1/evdriver/requestStartTransaction'
+      COMMANDS_OCPP2_0_1_REQUEST_STOP_TRANSACTION_REQUEST_URL: 'http://citrine:8080/ocpp/2.0.1/evdriver/requestStopTransaction'
+      COMMANDS_OCPP2_0_1_UNLOCK_CONNECTOR_REQUEST_URL: 'http://citrine:8080/ocpp/2.0.1/evdriver/unlockConnector'
+      # === API KEY (so OCPI can call core's authenticated endpoints) ===
+      COMMANDS_CORE_HEADERS: '{"X-API-Key":"${BOOTSTRAP_CITRINEOS_API_KEY}"}'
+    depends_on:
+      citrine:
+        condition: service_healthy
+      graphql-engine:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:8085:8085
     restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
