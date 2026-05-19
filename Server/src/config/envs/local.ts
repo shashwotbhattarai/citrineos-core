@@ -93,6 +93,8 @@ export function createLocalConfig() {
           OCPP2_0_1_CallAction.UnlockConnector,
           OCPP1_6_CallAction.RemoteStopTransaction,
           OCPP1_6_CallAction.RemoteStartTransaction,
+          OCPP1_6_CallAction.SendLocalList,
+          OCPP1_6_CallAction.GetLocalListVersion,
         ],
         requests: [OCPP2_0_1_CallAction.Authorize, OCPP2_0_1_CallAction.ReservationStatusUpdate],
       },

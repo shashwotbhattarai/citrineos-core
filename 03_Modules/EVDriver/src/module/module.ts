@@ -842,6 +842,22 @@ export class EVDriverModule extends AbstractModule {
     return;
   }
 
+  @AsHandler(OCPPVersion.OCPP1_6, OCPP1_6_CallAction.SendLocalList)
+  protected async _handleOcpp16SendLocalList(
+    message: IMessage<OCPP1_6.SendLocalListResponse>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.debug('OCPP 1.6 SendLocalListResponse received:', message, props);
+  }
+
+  @AsHandler(OCPPVersion.OCPP1_6, OCPP1_6_CallAction.GetLocalListVersion)
+  protected async _handleOcpp16GetLocalListVersion(
+    message: IMessage<OCPP1_6.GetLocalListVersionResponse>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.debug('OCPP 1.6 GetLocalListVersionResponse received:', message, props);
+  }
+
   @AsHandler(OCPPVersion.OCPP1_6, OCPP1_6_CallAction.RemoteStartTransaction)
   protected async _handleRemoteStartTransaction(
     message: IMessage<OCPP1_6.RemoteStartTransactionResponse>,

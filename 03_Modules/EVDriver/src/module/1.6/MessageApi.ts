@@ -116,6 +116,49 @@ export class EVDriverOcpp16Api
     return Promise.all(results);
   }
 
+  @AsMessageEndpoint(OCPP1_6_CallAction.SendLocalList, OCPP1_6.SendLocalListRequestSchema)
+  async sendLocalList(
+    identifier: string[],
+    request: OCPP1_6.SendLocalListRequest,
+    callbackUrl?: string,
+    tenantId: number = DEFAULT_TENANT_ID,
+  ): Promise<IMessageConfirmation[]> {
+    const results = identifier.map((id) =>
+      this._module.sendCall(
+        id,
+        tenantId,
+        OCPPVersion.OCPP1_6,
+        OCPP1_6_CallAction.SendLocalList,
+        request,
+        callbackUrl,
+      ),
+    );
+    return Promise.all(results);
+  }
+
+  @AsMessageEndpoint(
+    OCPP1_6_CallAction.GetLocalListVersion,
+    OCPP1_6.GetLocalListVersionRequestSchema,
+  )
+  async getLocalListVersion(
+    identifier: string[],
+    request: OCPP1_6.GetLocalListVersionRequest,
+    callbackUrl?: string,
+    tenantId: number = DEFAULT_TENANT_ID,
+  ): Promise<IMessageConfirmation[]> {
+    const results = identifier.map((id) =>
+      this._module.sendCall(
+        id,
+        tenantId,
+        OCPPVersion.OCPP1_6,
+        OCPP1_6_CallAction.GetLocalListVersion,
+        request,
+        callbackUrl,
+      ),
+    );
+    return Promise.all(results);
+  }
+
   @AsMessageEndpoint(OCPP1_6_CallAction.UnlockConnector, OCPP1_6.UnlockConnectorRequestSchema)
   async unlockConnector(
     identifier: string[],
